@@ -1,0 +1,832 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>本文分析ノート</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700&family=Literata:opsz,wght@7..72,400;7..72,600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#EDF1F5; --paper:#FFFFFF; --ink:#1C2740; --sub:#5A6680; --line:#CDD5E1; --focus:#2F6FDB;
+  --ok:#1F8A5B; --ng:#D33A3A; --soft:#F5F7FA; --warn:#B26A00;
+  --p-noun:#2F6FDB; --p-pron:#7A5AF8; --p-verb:#E0464B; --p-aux:#E8710A; --p-adj:#23955F;
+  --p-adv:#B58900; --p-prep:#0E93A0; --p-conj:#D6409F; --p-art:#7D8494;
+  --r-S:#2F6FDB; --r-V:#E0464B; --r-O:#23955F; --r-C:#B58900; --r-M:#7D8494;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#111722; --paper:#1A2230; --ink:#E6EBF3; --sub:#9AA6BC; --line:#334058; --focus:#7FA8F5;
+    --ok:#4CC38A; --ng:#FF6B6B; --soft:#202A3A; --warn:#E3A33B;
+    --p-noun:#6E9BF2; --p-pron:#A58BFF; --p-verb:#FF6B6E; --p-aux:#FF9A3D; --p-adj:#4CC38A;
+    --p-adv:#E3B83B; --p-prep:#3CC3CF; --p-conj:#F06BBE; --p-art:#A3AAB8;
+    --r-S:#6E9BF2; --r-V:#FF6B6E; --r-O:#4CC38A; --r-C:#E3B83B; --r-M:#A3AAB8;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#111722; --paper:#1A2230; --ink:#E6EBF3; --sub:#9AA6BC; --line:#334058; --focus:#7FA8F5;
+  --ok:#4CC38A; --ng:#FF6B6B; --soft:#202A3A; --warn:#E3A33B;
+  --p-noun:#6E9BF2; --p-pron:#A58BFF; --p-verb:#FF6B6E; --p-aux:#FF9A3D; --p-adj:#4CC38A;
+  --p-adv:#E3B83B; --p-prep:#3CC3CF; --p-conj:#F06BBE; --p-art:#A3AAB8;
+  --r-S:#6E9BF2; --r-V:#FF6B6E; --r-O:#4CC38A; --r-C:#E3B83B; --r-M:#A3AAB8;
+  color-scheme: dark;
+}
+:root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+html{scroll-padding-top:env(safe-area-inset-top,0px)}
+*,*::before,*::after{box-sizing:inherit}
+body{margin:0;background:var(--bg);color:var(--ink);font-family:"Zen Maru Gothic","Hiragino Maru Gothic ProN","Yu Gothic",sans-serif;font-size:16px;line-height:1.7}
+button,select,input,textarea{font:inherit;color:inherit}
+button{cursor:pointer}
+:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:6px}
+.en,.w{font-family:"Literata",Georgia,"Times New Roman",serif}
+
+body::before{content:"";position:fixed;inset:0 0 auto;height:env(safe-area-inset-top,0px);z-index:10;background:var(--paper)}
+header{position:sticky;top:env(safe-area-inset-top,0px);z-index:5;background:var(--paper);border-bottom:1px solid var(--line)}
+.hin{max-width:980px;margin:0 auto;padding:10px 16px;display:flex;align-items:center;justify-content:space-between;gap:12px}
+.brand{font-weight:700;font-size:1.05rem}
+.brand small{font-weight:400;color:var(--sub);margin-left:8px;font-size:.8rem}
+.modes{display:flex;background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:3px}
+.modes button{border:0;background:none;padding:6px 16px;border-radius:999px;font-weight:500;color:var(--sub)}
+.modes button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+
+main{max-width:980px;margin:0 auto;padding:20px 16px 60px}
+.lhead{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.unit{margin:0;color:var(--sub);font-size:.9rem}
+.tag{margin-left:8px;font-size:.75rem;border:1px solid var(--line);border-radius:4px;padding:1px 6px}
+h1{margin:2px 0 0;font-size:1.7rem;line-height:1.3}
+h2{font-size:1.15rem;margin:0 0 8px}
+.who{display:flex;align-items:center;gap:8px;font-size:.9rem;color:var(--sub)}
+select,input[type=text],input[type=password],textarea{background:var(--paper);border:1.5px solid var(--line);border-radius:8px;padding:8px 10px;max-width:100%}
+
+.steps{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:16px}
+.steps button{display:flex;align-items:center;gap:8px;background:var(--paper);border:1.5px solid var(--line);border-radius:10px;padding:8px 10px;text-align:left}
+.steps .num{width:24px;height:24px;flex:none;border-radius:50%;display:grid;place-items:center;background:var(--soft);font-weight:700;font-size:.85rem}
+.steps .lab{font-weight:700}
+.steps .cnt{margin-left:auto;color:var(--sub);font-size:.8rem}
+.steps button[aria-current="step"]{border-color:var(--ink)}
+.steps button[aria-current="step"] .num{background:var(--ink);color:var(--paper)}
+@media (max-width:600px){.steps .cnt{display:none}.steps button{flex-direction:column;gap:2px;text-align:center}.steps .lab{font-size:.85rem}}
+
+.guide{background:var(--paper);border-left:5px solid var(--ink);padding:10px 14px;border-radius:0 8px 8px 0;margin:0 0 14px}
+.legend{display:flex;flex-wrap:wrap;gap:6px 14px;font-size:.85rem;color:var(--sub);margin:-4px 0 14px}
+.legend b{display:inline-block;min-width:2.2em;text-align:center;border-radius:4px;color:#fff;padding:0 4px;margin-right:4px}
+.banner{background:var(--soft);border:1px dashed var(--line);border-radius:8px;padding:8px 12px;font-size:.9rem}
+.linkbtn{border:0;background:none;color:var(--focus);text-decoration:underline;padding:0 4px}
+
+.card{background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:14px 16px;margin-bottom:12px}
+.sno{font-size:.8rem;color:var(--sub);margin-bottom:6px}
+
+/* 意味調べ */
+.mrow{display:grid;grid-template-columns:1fr minmax(160px,260px);gap:12px;align-items:center}
+.mrow .en{font-size:1.35rem;font-weight:600}
+.ctx{margin:0;color:var(--sub);font-size:.95rem;font-family:"Literata",Georgia,serif}
+.ctx b{color:var(--ink);text-decoration:underline;text-underline-offset:3px}
+@media (max-width:560px){.mrow{grid-template-columns:1fr}}
+
+/* かたまり */
+.line{display:flex;flex-wrap:wrap;align-items:flex-start;row-gap:16px;column-gap:0}
+.chunk{display:inline-flex;flex-direction:column;align-items:center}
+.cw{display:flex;align-items:stretch;border:2px solid var(--ink);border-top:0;border-radius:0 0 10px 10px;padding:0 6px 2px;min-height:44px}
+.w{font-size:1.35rem;padding:4px 2px;align-self:center}
+.gap{width:20px;min-height:44px;border:0;background:none;padding:0;position:relative}
+.gap::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:var(--line)}
+.gap:hover::after{background:var(--focus)}
+.gap.on{width:22px;align-self:stretch;min-height:44px}
+.gap.on::after{width:2px;height:70%;margin:0 0 0 -1px;top:15%;border-radius:1px;background:var(--focus)}
+.role{margin-top:6px;border:1.5px dashed var(--sub);background:var(--paper);border-radius:999px;padding:1px 12px;font-size:.85rem;min-width:56px;min-height:40px;font-weight:700;color:var(--sub)}
+.role.set,.role.static{border-style:solid;color:#fff;border-color:transparent}
+.role[data-r="S"]{background:var(--r-S)}.role[data-r="V"]{background:var(--r-V)}.role[data-r="O"]{background:var(--r-O)}.role[data-r="C"]{background:var(--r-C)}.role[data-r="修飾"]{background:var(--r-M)}.role[data-r="つなぎ"]{background:var(--p-conj)}
+.role.static[data-r=""]{background:var(--soft);color:var(--sub);border:1.5px dashed var(--sub)}
+.dot{color:var(--ink);font-size:1.35rem;align-self:flex-start;padding-top:6px;font-family:"Literata",serif}
+
+/* 品詞 */
+.palette{position:sticky;top:calc(env(safe-area-inset-top,0px) + 58px);z-index:4;display:flex;flex-wrap:wrap;gap:6px;background:var(--bg);padding:8px 0 10px;margin-bottom:6px}
+.palette button{display:flex;align-items:center;gap:6px;border:1.5px solid var(--line);background:var(--paper);border-radius:8px;padding:6px 10px;font-weight:500;min-height:44px}
+.palette i{width:14px;height:14px;border-radius:3px;background:var(--c)}
+.palette button[aria-pressed="true"]{border-color:var(--c,var(--ink));box-shadow:inset 0 0 0 1.5px var(--c,var(--ink));font-weight:700}
+.palette .qt{--c:var(--warn)}
+.palette .xt{--c:var(--sub)}
+.wline{display:flex;flex-wrap:wrap;gap:6px 4px;align-items:flex-end}
+.wd{position:relative;display:inline-flex;flex-direction:column;align-items:center;border:0;background:none;padding:4px 6px 2px;border-bottom:5px solid var(--c);border-radius:6px 6px 0 0;min-width:44px}
+.wd.has{background:color-mix(in srgb,var(--c) 14%,transparent)}
+.wd .en{font-size:1.35rem;line-height:1.3}
+.wd.gl{margin-left:-3px}
+.wd .pl{font-size:.72rem;color:var(--c);font-weight:700;min-height:1.1em;white-space:nowrap}
+.wd:not(.has) .pl{color:var(--sub)}
+.qb{position:absolute;top:-8px;right:-6px;background:var(--warn);color:#fff;border-radius:50%;width:20px;height:20px;font-size:.75rem;display:grid;place-items:center;font-weight:700}
+.end{font-family:"Literata",serif;font-size:1.35rem;align-self:center}
+
+/* 提出 */
+.check{list-style:none;padding:0;margin:0 0 12px}
+.check li{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line)}
+.check .ng{color:var(--warn);font-weight:700}
+.check .ok{color:var(--ok);font-weight:700}
+textarea{width:100%;min-height:80px}
+.primary{background:var(--ink);color:var(--paper);border:0;border-radius:10px;padding:12px 22px;font-weight:700;font-size:1.05rem}
+.secondary{background:var(--paper);border:1.5px solid var(--ink);border-radius:10px;padding:10px 18px;font-weight:700}
+
+/* 結果 */
+.score{display:flex;align-items:center;gap:20px;flex-wrap:wrap}
+.score .big{font-size:3rem;font-weight:700;line-height:1}
+.score .big small{font-size:1.1rem}
+.cats{display:flex;gap:16px;flex-wrap:wrap;font-size:.9rem;color:var(--sub)}
+.cats b{color:var(--ink)}
+.rv{display:flex;flex-wrap:wrap;row-gap:12px;align-items:flex-start}
+.chunk.view .cw{padding:0 4px 2px;gap:2px;align-items:flex-end}
+.chunk.view.bad .cw{border-color:var(--ng)}
+.wd.static{cursor:default}
+.wd.static.bad{border-bottom-style:double;border-bottom-color:var(--ng)}
+.x{color:var(--ng);margin-left:2px}
+.fix{color:var(--ng);margin-left:4px}
+.role.static.bad{outline:2px solid var(--ng);outline-offset:1px}
+.keyline{margin:10px 0 0;font-size:.9rem;color:var(--sub);font-family:"Literata",serif}
+.keyline sub{font-family:"Zen Maru Gothic",sans-serif;color:var(--ink);font-weight:700;margin-right:6px}
+.mlist{width:100%;border-collapse:collapse;font-size:.95rem}
+.mlist td{padding:6px 4px;border-bottom:1px solid var(--line)}
+.okc{color:var(--ok);font-weight:700}.ngc{color:var(--ng);font-weight:700}
+
+/* 講師画面 */
+.stats{display:flex;flex-wrap:wrap;gap:8px 28px;background:var(--paper);border:1px solid var(--line);border-radius:12px;padding:12px 16px;margin-bottom:14px}
+.stats div{font-size:.85rem;color:var(--sub)}
+.stats b{display:block;font-size:1.3rem;color:var(--ink)}
+.tw{overflow-x:auto;background:var(--paper);border:1px solid var(--line);border-radius:12px;margin-bottom:14px}
+table.roster{width:100%;border-collapse:collapse;min-width:680px;font-size:.92rem}
+.roster th{text-align:left;font-weight:500;color:var(--sub);font-size:.8rem;padding:8px 10px;border-bottom:1px solid var(--line)}
+.roster td{padding:10px;border-bottom:1px solid var(--line);vertical-align:middle}
+.roster tr.row{cursor:pointer}
+.roster tr.row:hover td{background:var(--soft)}
+.roster tr.sel td{background:color-mix(in srgb,var(--focus) 10%,transparent)}
+.st{font-size:.8rem;border-radius:4px;padding:2px 8px;white-space:nowrap}
+.st.none{background:var(--soft);color:var(--sub)}
+.st.wait{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn);font-weight:700}
+.st.done{background:color-mix(in srgb,var(--ok) 15%,transparent);color:var(--ok);font-weight:700}
+.bar{position:relative;display:inline-block;width:110px;height:8px;background:var(--soft);border-radius:4px;vertical-align:middle;margin-right:8px}
+.bar i{position:absolute;inset:0 auto 0 0;border-radius:4px;background:var(--ok)}
+.bar i.low{background:var(--ng)}
+.bar em{position:absolute;top:-3px;bottom:-3px;width:2px;background:var(--ink);opacity:.5}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+@media (max-width:700px){.grid2{grid-template-columns:1fr}}
+.hb{display:grid;grid-template-columns:5.5em 1fr 3em;align-items:center;gap:8px;font-size:.88rem;margin:4px 0}
+.hb .bar{width:100%}
+.chips{display:flex;flex-wrap:wrap;gap:6px}
+.chip{border:1px solid var(--line);border-radius:999px;padding:2px 10px;font-size:.9rem;font-family:"Literata",serif}
+.chip span{font-family:"Zen Maru Gothic",sans-serif;color:var(--warn);font-weight:700;margin-left:4px}
+.detail h2{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.scaf{margin:0;padding-left:1.2em}
+.scaf li{margin:4px 0}
+.memo{background:var(--soft);border-radius:8px;padding:8px 12px;margin:0}
+.checkbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.muted{color:var(--sub);font-size:.88rem}
+.snav{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 10px}
+.snav button{border:1.5px solid var(--line);background:var(--paper);border-radius:999px;padding:6px 14px;min-height:44px;font-weight:500}
+.snav button.done{color:var(--ok);border-color:color-mix(in srgb,var(--ok) 50%,var(--line))}
+.snav button[aria-current="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.card.big{padding:22px 18px}
+.card.big .w,.card.big .wd .en,.card.big .end{font-size:1.65rem}
+.card.big .wd{min-width:52px;padding:6px 8px 3px}
+.card.big .wline{gap:12px 6px}
+.pager{display:flex;justify-content:space-between;gap:10px;margin-top:4px}
+.pager button[disabled]{opacity:.35;cursor:default}
+.sech{margin:22px 0 6px}
+.mcount{display:flex;gap:8px;flex-wrap:wrap;align-items:center;font-size:.88rem;margin-top:6px}
+.mcount span:not(:first-child){border-radius:4px;padding:1px 8px;font-weight:700}
+.t-品詞{background:color-mix(in srgb,var(--p-verb) 15%,transparent);color:var(--p-verb)}
+.t-かたまり{background:color-mix(in srgb,var(--p-noun) 15%,transparent);color:var(--p-noun)}
+.t-意味{background:color-mix(in srgb,var(--p-adj) 15%,transparent);color:var(--p-adj)}
+.msent{font-family:"Literata",Georgia,serif;font-size:1.25rem;margin:2px 0 10px;line-height:2}
+.msent .bp{color:var(--ng);font-weight:600}
+.msent .bc{text-decoration:underline dashed var(--p-noun);text-decoration-thickness:2px;text-underline-offset:6px}
+.msent.small{font-size:.95rem;margin:0;color:var(--sub);line-height:1.5}
+.okrow{display:flex;gap:14px;align-items:baseline;flex-wrap:wrap;padding:10px 16px}
+.okrow .sno{margin:0}
+.mks{display:grid;gap:10px}
+.mk{border:1px solid var(--line);border-radius:10px;padding:10px 12px;background:var(--soft)}
+.mk-h{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.mk-h .en{font-size:1.15rem}
+.mk-type{font-size:.75rem;font-weight:700;border-radius:4px;padding:1px 8px}
+.qtag{font-size:.75rem;font-weight:700;color:var(--warn);border:1px solid var(--warn);border-radius:4px;padding:0 6px}
+.mk-ans{display:flex;gap:6px 18px;flex-wrap:wrap;margin:6px 0 4px;font-size:.95rem}
+.mk-ans .was{color:var(--ng);text-decoration:line-through;text-decoration-thickness:1px}
+.mk-ans .right{color:var(--ok);font-weight:700}
+.why,.ask{margin:4px 0 0;font-size:.92rem;display:grid;grid-template-columns:4em 1fr;gap:6px}
+.why b,.ask b{color:var(--sub);font-weight:500;font-size:.82rem;padding-top:2px}
+details.card summary{cursor:pointer;font-weight:700}
+.foot{margin-top:28px;font-size:.82rem;color:var(--sub)}
+.foot button{margin-left:8px}
+@media (prefers-reduced-motion:reduce){*{transition:none!important;animation:none!important}}
+
+/* ===== 本番版で足したもの ===== */
+.hright{display:flex;align-items:center;gap:10px;font-size:.88rem;color:var(--sub);flex-wrap:wrap;justify-content:flex-end}
+.hright .linkbtn{min-height:44px}
+.savest{font-size:.8rem}
+.savest.err{color:var(--ng);font-weight:700}
+.login{max-width:460px;margin:24px auto}
+.login h1{margin-bottom:8px}
+.login label{display:block;margin:14px 0 4px;font-weight:700}
+.login input,.login select{width:100%;min-height:44px}
+.login .modes{display:inline-flex;margin-top:6px}
+.login .modes button{min-height:44px;padding:6px 22px}
+.login .primary{width:100%;margin-top:18px;min-height:48px}
+.banner.err{border:1px solid var(--ng);color:var(--ng);background:color-mix(in srgb,var(--ng) 8%,var(--paper));margin:0 0 12px}
+.lcard{display:flex;width:100%;text-align:left;align-items:center;justify-content:space-between;gap:12px;min-height:64px;font:inherit}
+.lcard b{display:block;font-size:1.1rem}
+.lcard .unit{font-size:.82rem}
+.tctl{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tctl .secondary{min-height:44px}
+.loading{padding:30px 0;text-align:center}
+button[disabled]{opacity:.5;cursor:default}
+</style>
+</head>
+<body>
+<header><div class="hin">
+  <div class="brand">本文分析ノート<small>v1</small></div>
+  <div class="hright" id="hright"></div>
+</div></header>
+<main id="main"></main>
+
+<script>
+/* ===== 設定 ===== */
+const VERSION=1;
+/* ↓ GAS を「ウェブアプリ」として公開したときの URL を ' ' の間に貼る（docs/setup.md 手順7） */
+const API_URL='https://script.google.com/macros/s/AKfycbxUiT8hdHzK3Ol4ZKZJT1hFNnyWGQolkUCGVA3amXMKUl_dXqweX0BrD6XMpVfs9Q_j/exec';
+
+const POS=[
+ {k:'名',name:'名詞',v:'--p-noun'},{k:'代',name:'代名詞',v:'--p-pron'},{k:'動',name:'動詞',v:'--p-verb'},
+ {k:'助',name:'助動詞',v:'--p-aux'},{k:'形',name:'形容詞',v:'--p-adj'},{k:'副',name:'副詞',v:'--p-adv'},
+ {k:'前',name:'前置詞',v:'--p-prep'},{k:'接',name:'接続詞',v:'--p-conj'},{k:'冠',name:'冠詞',v:'--p-art'}
+];
+const ROLE_CYCLE=['','S','V','O','C','修飾','つなぎ'];
+/* 講師用：品詞・役割ごとの共通の理由と聞き方（レッスンに why がないときに使う） */
+const POS_WHY={
+ '名':{why:'人・物・場所・時などの名前を表す語。',ask:'「これは何かの名前？」と聞く'},
+ '代':{why:'名詞のかわりに使う語（he, she, her など）。',ask:'「この単語は誰のこと？」と聞く'},
+ '動':{why:'動作や状態を表し、文の中心（V）になる語。',ask:'「この文で『〜する』『〜だ』にあたる語はどれ？」と聞く'},
+ '助':{why:'動詞の前に置いて意味を足す語（can, will など）。後ろに動詞の原形が来る。',ask:'「すぐ後ろに動詞がある？」と聞く'},
+ '形':{why:'名詞をくわしくする語。be動詞の後ろでSの様子を説明することもある。',ask:'「どの名詞をくわしくしている？」と聞く'},
+ '副':{why:'動詞・形容詞・他の副詞をくわしくする語。名詞はくわしくしない。',ask:'「この語がくわしくしているのは名詞？それ以外？」と聞く'},
+ '前':{why:'名詞の前に置いて、場所・時・関係を表す語。後ろの名詞とセットでかたまりを作る。',ask:'「後ろにどんな名詞が続いている？」と聞く'},
+ '接':{why:'語と語、文と文をつなぐ語（and, but など）。',ask:'「何と何をつないでいる？」と聞く'},
+ '冠':{why:'a / an / the の3語だけが冠詞。名詞の前に付いて「1つの」「その」を表す。',ask:'「冠詞の仲間は何語ある？」と聞く'}
+};
+const ROLE_WHY={'S':'「〜は・〜が」にあたる主語。','V':'動作や状態を表す動詞。','O':'動詞のあとで「〜を・〜に」にあたる目的語。','C':'Sの様子や正体を説明する補語。S＝C が成り立つ。','修飾':'時・場所・様子などをくわしくする部分。なくても文は成り立つ。','つなぎ':'文と文、語と語をつなぐ部分（and, but など）。'};
+const ROLE_ASK={'S':'「この文は誰（何）の話？」と聞く','V':'「動作や状態を表す語はどれ？」と聞く','O':'「動詞のあとに『何を？』と聞くと、答えはどこ？」と聞く','C':'「S＝この部分、と言える？」と聞く','修飾':'「このかたまりがなくても文は成り立つ？」と聞く','つなぎ':'「この語は前の文とどうつながっている？」と聞く'};
+
+/* ===== 小さな道具 ===== */
+const clone=o=>JSON.parse(JSON.stringify(o));
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const posOf=k=>POS.find(p=>p.k===k);
+const posName=k=>posOf(k)?.name||'';
+const posVar=k=>posOf(k)?`var(${posOf(k).v})`:'var(--line)';
+const posOk=(tk,v)=>!!v&&(v===tk.pos||(tk.alt||[]).includes(v));
+const jt=toks=>toks.map((t,i)=>(i&&!t.glue?' ':'')+t.w).join('');
+const words=(L,si,a,b)=>jt(L.sentences[si].tokens.slice(a,b+1));
+/* サーバーの日時「2026/10/20 13:05:00」→「10/20 13:05」 */
+const fmt=s=>{const m=/^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/.exec(String(s||''));if(!m)return String(s||'');return `${+m[2]}/${+m[3]}${m[4]?` ${m[4].padStart(2,'0')}:${m[5]}`:''}`};
+const fmtDate=s=>{const m=/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/.exec(String(s||''));return m?`${+m[2]}/${+m[3]}`:String(s||'')};
+const uuid=()=>{try{if(crypto.randomUUID)return crypto.randomUUID()}catch(e){}return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,12)+'-'+Math.random().toString(36).slice(2,12)};
+
+const LOGIN_KEY='honbun-check-login';
+const draftKey=(sid,lid)=>`honbun-check-draft:${sid}:${lid}`;
+function lsGet(k){try{const r=localStorage.getItem(k);return r?JSON.parse(r):null}catch(e){return null}}
+function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
+
+/* ===== 通信 ===== */
+async function api(action,payload={}){
+ if(!API_URL)throw new Error('API_URL が設定されていません。');
+ const body=Object.assign({action,classCode:S.classCode},S.auth?.role==='teacher'?{teacherPass:S.auth.teacherPass}:{},payload);
+ const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),30000);
+ let res;
+ try{res=await fetch(API_URL,{method:'POST',body:JSON.stringify(body),signal:ctl.signal})}
+ catch(e){throw new Error('通信できませんでした。インターネットにつながっているか確かめて、もう一度ためしてください。')}
+ finally{clearTimeout(tm)}
+ let j;
+ try{j=await res.json()}catch(e){throw new Error('サーバーからの返事が読めませんでした。少し待ってからもう一度ためしてください。')}
+ if(j.status!=='ok'){const err=new Error(j.message||'エラーが起きました。');err.code=j.code||'';throw err}
+ return j;
+}
+
+/* ===== 状態 ===== */
+const S={
+ classCode:'',roster:null,form:{cc:'',role:'student',sid:'',tname:'',pass:''},auth:null,screen:'login',busy:false,error:'',
+ lessons:null,L:null,draft:null,sub:null,step:1,si:0,tool:'名',showResult:false,submitting:false,submitId:null,
+ tLessons:null,tLessonId:'',tData:null,tsel:'',checking:false
+};
+const SV={state:'idle',ver:0,savedVer:0,timer:null,inflight:null,again:false};
+function saveLogin(){lsSet(LOGIN_KEY,{classCode:S.classCode,auth:S.auth,tLessonId:S.tLessonId})}
+
+function handleError(e){
+ if(e.code==='class'||e.code==='student'||(e.code==='teacher'&&S.screen==='teacher')){logout(e.message);return}
+ S.error=e.message;
+}
+
+/* ===== 答えの形 ===== */
+function blankA(L){return{meanings:{},bounds:L.sentences.map(()=>[]),roles:L.sentences.map(()=>({})),pos:L.sentences.map(s=>s.tokens.map(()=>null)),q:{},memo:''}}
+function fitA(L,a){
+ const b=blankA(L);a=a||{};
+ b.meanings=Object.assign({},a.meanings);b.q=Object.assign({},a.q);b.memo=String(a.memo||'');
+ L.sentences.forEach((s,si)=>{
+  b.bounds[si]=Array.isArray(a.bounds?.[si])?a.bounds[si].slice():[];
+  b.roles[si]=Object.assign({},a.roles?.[si]);
+  const p=a.pos?.[si]||[];b.pos[si]=s.tokens.map((_,ti)=>p[ti]||null);
+ });
+ return b;
+}
+function chunksFrom(bounds,n){
+ const b=[...new Set(bounds)].sort((x,y)=>x-y);const out=[];let st=0;
+ for(const g of b){if(g>=st&&g<n-1){out.push([st,g]);st=g+1}}
+ out.push([st,n-1]);return out;
+}
+function counts(L,a){
+ let r=0,rn=0,p=0,pn=0;
+ L.sentences.forEach((s,si)=>{const ch=chunksFrom(a.bounds[si],s.tokens.length);rn+=ch.length;r+=ch.filter(c=>a.roles[si][c[0]+'-'+c[1]]).length;pn+=s.tokens.length;p+=a.pos[si].filter(Boolean).length});
+ const m=L.words.filter(w=>(a.meanings[w.w]||'').trim()).length;
+ return{m,mn:L.words.length,r,rn,p,pn};
+}
+
+/* ===== 下書きの自動保存 ===== */
+function markDirty(){
+ SV.ver++;SV.state='dirty';S.submitId=null;
+ lsSet(draftKey(S.auth.studentId,S.L.lessonId),{answers:S.draft,pending:true});
+ clearTimeout(SV.timer);SV.timer=setTimeout(flushDraft,3000);
+ updateSaveState();
+}
+function flushDraft(){
+ clearTimeout(SV.timer);SV.timer=null;
+ if(S.auth?.role!=='student'||!S.L||SV.ver===SV.savedVer)return Promise.resolve();
+ if(SV.inflight){SV.again=true;return SV.inflight}
+ const ver=SV.ver,answers=clone(S.draft),sid=S.auth.studentId,lid=S.L.lessonId;
+ SV.state='saving';updateSaveState();
+ SV.inflight=(async()=>{
+  try{
+   await api('saveDraft',{studentId:sid,lessonId:lid,answers});
+   SV.savedVer=Math.max(SV.savedVer,ver);
+   if(SV.ver===ver){SV.state='saved';lsSet(draftKey(sid,lid),{answers,pending:false})}else SV.state='dirty';
+  }catch(e){
+   SV.state='error';
+   if(e.code){handleError(e);render()}else SV.timer=setTimeout(flushDraft,10000);
+  }finally{
+   SV.inflight=null;updateSaveState();
+   if(SV.again){SV.again=false;if(SV.ver!==SV.savedVer)flushDraft()}
+  }
+ })();
+ return SV.inflight;
+}
+function beaconFlush(){
+ if(S.auth?.role==='student'&&S.L&&SV.ver!==SV.savedVer&&API_URL&&navigator.sendBeacon){
+  navigator.sendBeacon(API_URL,JSON.stringify({action:'saveDraft',classCode:S.classCode,studentId:S.auth.studentId,lessonId:S.L.lessonId,answers:S.draft}));
+ }
+}
+function updateSaveState(){
+ const el=document.getElementById('savest');if(!el)return;
+ const on=S.screen==='lesson'&&S.L;
+ el.textContent=!on?'':{idle:'',dirty:'入力中…',saving:'保存中…',saved:'保存しました ✓',error:'保存できませんでした。自動でやり直します'}[SV.state];
+ el.className='savest'+(SV.state==='error'?' err':'');
+}
+
+/* ===== 画面の流れ ===== */
+async function start(){
+ const saved=lsGet(LOGIN_KEY)||{};
+ S.classCode=saved.classCode||'';S.form.cc=S.classCode;S.tLessonId=saved.tLessonId||'';
+ if(saved.auth&&API_URL){
+  S.auth=saved.auth;S.classCode=saved.auth.classCode||S.classCode;
+  if(S.auth.role==='student')return goList();
+  return loadTeacher();
+ }
+ render();
+}
+async function logout(msg){
+ if(S.auth?.role==='student')await flushDraft().catch(()=>{});
+ S.auth=null;S.roster=null;S.screen='login';S.lessons=null;S.L=null;S.tData=null;S.tLessons=null;S.tsel='';S.form.pass='';
+ S.error=msg||'';saveLogin();render();window.scrollTo(0,0);
+}
+async function enterCode(){
+ const cc=S.form.cc.trim();if(!cc){S.error='教室コードを入れてください。';return render()}
+ S.busy=true;S.error='';S.classCode=cc;render();
+ try{
+  const j=await api('login');S.roster=j;saveLogin();
+  S.form.sid=S.form.sid||j.students[0]?.studentId||'';S.form.tname=S.form.tname||j.teachers[0]||'';
+ }catch(e){S.error=e.message}
+ S.busy=false;render();
+}
+async function loginStudent(){
+ const st=S.roster.students.find(x=>x.studentId===S.form.sid);if(!st)return;
+ S.auth={role:'student',classCode:S.classCode,studentId:st.studentId,name:st.name};saveLogin();S.error='';
+ goList();
+}
+async function loginTeacher(){
+ if(!S.form.tname){S.error='講師の名前を選んでください。';return render()}
+ S.auth={role:'teacher',classCode:S.classCode,teacherName:S.form.tname,teacherPass:S.form.pass.trim()};
+ S.busy=true;S.error='';render();
+ try{const j=await api('listLessons');S.tLessons=j.lessons;saveLogin();S.busy=false;S.form.pass='';return loadTeacher()}
+ catch(e){S.auth=null;S.error=e.message}
+ S.busy=false;render();
+}
+
+/* 生徒 */
+async function goList(){
+ S.screen='list';S.lessons=null;S.L=null;S.error='';render();
+ try{const j=await api('listAssignments',{studentId:S.auth.studentId});S.lessons=j.lessons}catch(e){handleError(e)}
+ render();
+}
+async function openLesson(id){
+ Object.assign(S,{screen:'lesson',L:null,draft:null,sub:null,step:1,si:0,showResult:false,submitId:null,error:''});
+ Object.assign(SV,{state:'idle',ver:0,savedVer:0,again:false});
+ render();window.scrollTo(0,0);
+ try{
+  const j=await api('getLessonForStudent',{studentId:S.auth.studentId,lessonId:id});
+  const L=j.lesson;
+  const local=lsGet(draftKey(S.auth.studentId,id));
+  const resend=!!(local?.pending&&local.answers);
+  S.draft=fitA(L,resend?local.answers:(j.draft||j.latest?.answers||null));
+  S.sub=j.latest?{answers:fitA(L,j.latest.answers),result:j.latest.result,attempt:j.latest.attempt,submittedAt:j.latest.submittedAt}:null;
+  S.L=L;
+  if(resend)markDirty();
+ }catch(e){handleError(e);if(S.auth)S.screen='list'}
+ render();
+}
+async function backToList(){await flushDraft().catch(()=>{});goList();window.scrollTo(0,0)}
+async function submit(){
+ if(S.submitting)return;
+ S.submitting=true;S.error='';clearTimeout(SV.timer);render();
+ const id=S.submitId||(S.submitId=uuid());
+ const ver=SV.ver,answers=clone(S.draft),sid=S.auth.studentId,lid=S.L.lessonId;
+ let j=null,err=null;
+ for(let i=0;i<3&&!j;i++){
+  try{j=await api('submit',{studentId:sid,lessonId:lid,submissionId:id,answers})}
+  catch(e){err=e;if(e.code)break;await new Promise(r=>setTimeout(r,1500))}
+ }
+ S.submitting=false;
+ if(j){
+  S.sub={answers:fitA(S.L,j.answers),result:{rate:j.rate,cats:j.cats,marks:j.marks},attempt:j.attempt,submittedAt:j.submittedAt};
+  S.submitId=null;S.showResult=true;
+  SV.savedVer=Math.max(SV.savedVer,ver);
+  if(SV.ver===ver){SV.state='saved';lsSet(draftKey(sid,lid),{answers,pending:false})}
+  window.scrollTo(0,0);
+ }else if(err){handleError(err)}
+ render();
+}
+
+/* 講師 */
+async function loadTeacher(){
+ S.screen='teacher';S.error='';render();
+ try{
+  if(!S.tLessons){const j=await api('listLessons');S.tLessons=j.lessons}
+  if(!S.tLessons.length){S.tData=null;return render()}
+  if(!S.tLessons.some(l=>l.lessonId===S.tLessonId))S.tLessonId=S.tLessons[0].lessonId;
+  saveLogin();
+  const j=await api('listSubmissions',{lessonId:S.tLessonId});
+  S.tData=j;
+  if(S.tsel&&!j.students.some(s=>s.studentId===S.tsel))S.tsel='';
+ }catch(e){handleError(e)}
+ render();
+}
+async function setCheck(id,on){
+ if(S.checking)return;
+ S.checking=true;S.error='';render();
+ try{
+  const j=await api(on?'check':'uncheck',{submissionId:id,teacherName:S.auth.teacherName});
+  const st=S.tData.students.find(x=>x.latest?.submissionId===id);
+  if(st){st.latest.checkedBy=j.checkedBy;st.latest.checkedAt=j.checkedAt}
+ }catch(e){handleError(e)}
+ S.checking=false;render();
+}
+
+/* ===== 画面：共通 ===== */
+function render(){
+ document.getElementById('hright').innerHTML=headRight();
+ let h=S.error?`<p class="banner err" role="alert">${esc(S.error)}<button class="linkbtn" data-act="dismiss">閉じる</button></p>`:'';
+ if(S.screen==='login')h+=loginView();
+ else if(S.screen==='list')h+=listView();
+ else if(S.screen==='lesson')h+=S.L?studentView():loadingView();
+ else h+=teacherView();
+ document.getElementById('main').innerHTML=h;
+ updateSaveState();
+}
+const loadingView=()=>`<p class="muted loading">読み込み中…</p>`;
+function headRight(){
+ if(!S.auth)return '';
+ const name=S.auth.role==='student'?S.auth.name:`${S.auth.teacherName}（講師）`;
+ return `<span id="savest" class="savest"></span><span>${esc(name)}</span><button class="linkbtn" data-act="logout">ログアウト</button>`;
+}
+function loginView(){
+ if(!API_URL)return `<div class="card login"><h1>本文分析ノート</h1><p class="banner">まだサーバーとつながっていません。index.html の API_URL に GAS の URL を入れてください（docs/setup.md の手順7）。</p></div>`;
+ if(!S.roster)return `<form class="card login" data-submit="code"><h1>本文分析ノート</h1>
+  <label for="cc">教室コード</label><input id="cc" type="text" data-in="cc" value="${esc(S.form.cc)}" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <button class="primary" ${S.busy?'disabled':''}>${S.busy?'確認しています…':'次へ'}</button></form>`;
+ const R=S.roster,t=S.form.role==='teacher';
+ let h=`<form class="card login" data-submit="${t?'teacher':'student'}"><h1>本文分析ノート</h1>
+  <div class="modes" role="group" aria-label="使う人"><button type="button" data-act="lrole" data-v="student" aria-pressed="${!t}">生徒</button><button type="button" data-act="lrole" data-v="teacher" aria-pressed="${t}">講師</button></div>`;
+ if(!t){
+  h+=`<label for="lsid">名前</label><select id="lsid" data-in="sid">${R.students.map(s=>`<option value="${esc(s.studentId)}" ${s.studentId===S.form.sid?'selected':''}>${esc(s.grade)} ${esc(s.name)}</option>`).join('')}</select>`;
+ }else{
+  h+=`<label for="ltn">講師の名前</label><select id="ltn" data-in="tname">${R.teachers.map(n=>`<option ${n===S.form.tname?'selected':''}>${esc(n)}</option>`).join('')}</select>
+  <label for="lpw">講師用の合言葉</label><input id="lpw" type="password" data-in="pass" value="${esc(S.form.pass)}" autocomplete="current-password">`;
+ }
+ return h+`<button class="primary" ${S.busy?'disabled':''}>${S.busy?'確認しています…':'はじめる'}</button>
+  <p class="muted">教室コード：${esc(S.classCode)}<button type="button" class="linkbtn" data-act="ccreset">変える</button></p></form>`;
+}
+
+/* ===== 生徒画面 ===== */
+function listView(){
+ let h=`<section class="lhead"><div><p class="unit">${esc(S.auth.name)} さん</p><h1>宿題の一覧</h1></div></section>`;
+ if(!S.lessons)return h+loadingView();
+ if(!S.lessons.length)return h+`<div class="card"><p>配られた宿題はまだありません。先生に伝えてください。</p></div>`;
+ return h+S.lessons.map(l=>{
+  const st=l.attempts?(l.checked?`<span class="st done">先生がチェックしました</span>`:`<span class="st done">提出ずみ（${l.attempts}回目・${l.rate}%）</span>`):l.hasDraft?`<span class="st wait">とちゅう</span>`:`<span class="st none">まだ</span>`;
+  return `<button class="card lcard" data-act="open" data-v="${esc(l.lessonId)}"><span><span class="unit">${esc(l.note)}</span><b>${esc(l.title)}</b>${l.dueDate?`<span class="muted">期限 ${esc(fmtDate(l.dueDate))}</span>`:''}</span>${st}</button>`;
+ }).join('');
+}
+function studentView(){
+ const L=S.L,a=S.draft,r=S.sub;
+ let h=`<section class="lhead"><div><p class="unit">${esc(L.title)}${L.note?`<span class="tag">${esc(L.note)}</span>`:''}</p><h1>本文分析ノート</h1></div>
+ <button class="secondary" data-act="back">一覧にもどる</button></section>`;
+ if(r&&S.showResult)return h+resultView(r);
+ const c=counts(L,a);
+ const steps=[['意味調べ',`${c.m}/${c.mn}`],['かたまり',`${c.r}/${c.rn}`],['品詞',`${c.p}/${c.pn}`],['提出','']];
+ h+=`<nav class="steps" aria-label="手順">${steps.map((s,i)=>`<button data-act="step" data-v="${i+1}" aria-current="${S.step===i+1?'step':'false'}"><span class="num">${i+1}</span><span class="lab">${s[0]}</span><span class="cnt">${s[1]}</span></button>`).join('')}</nav>`;
+ if(r)h+=`<p class="banner">${esc(fmt(r.submittedAt))} に提出しました（${r.attempt}回目）。直してもう一度提出することもできます。<button class="linkbtn" data-act="showres">結果を見る</button></p>`;
+ return h+[step1,step2,step3,step4][S.step-1](a);
+}
+function step1(a){
+ const L=S.L;
+ let h=`<p class="guide">新しい単語の意味を調べて書こう。辞書の一番上ではなく、この文の中で合う意味を選ぶのがコツです。</p>`;
+ L.words.forEach(w=>{
+  const s=L.sentences[w.sentence];
+  const ctx=s?s.tokens.map((t,i)=>(i&&!t.glue?' ':'')+(t.w.toLowerCase()===w.w.toLowerCase()?`<b>${esc(t.w)}</b>`:esc(t.w))).join('')+esc(s.end):'';
+  h+=`<div class="card mrow"><div><div class="en">${esc(w.w)}</div><p class="ctx">${ctx}</p></div>
+  <input type="text" data-in="meaning" data-w="${esc(w.w)}" value="${esc(a.meanings[w.w]||'')}" placeholder="意味を書こう" aria-label="${esc(w.w)} の意味"></div>`;
+ });
+ return h+nextBtn(2,'次へ：かたまりに分ける');
+}
+function sentNav(kind,a){
+ return `<div class="snav" aria-label="文の切り替え">${S.L.sentences.map((x,si)=>{
+  const done=kind==='pos'?a.pos[si].every(Boolean):chunksFrom(a.bounds[si],x.tokens.length).every(c=>a.roles[si][c[0]+'-'+c[1]]);
+  return `<button data-act="sent" data-v="${si}" aria-current="${S.si===si?'true':'false'}" class="${done?'done':''}">文${si+1}${done?' ✓':''}</button>`}).join('')}</div>`;
+}
+function pager(nextStep,label){
+ const si=S.si,n=S.L.sentences.length;
+ return `<div class="pager"><button class="secondary" data-act="sent" data-v="${si-1}" ${si===0?'disabled':''}>前の文</button>
+ ${si<n-1?`<button class="primary" data-act="sent" data-v="${si+1}">次の文（文${si+2}）へ</button>`:`<button class="primary" data-act="step" data-v="${nextStep}">${label}</button>`}</div>`;
+}
+function step2(a){
+ const si=S.si;
+ let h=`<p class="guide">① 動詞（V）を見つける → ② 「だれが？」で S を見つける → ③ 意味のかたまりごとに区切る。単語のあいだの点をタップすると区切り線が入ります。最後に下のラベルをタップして役割を選ぼう。</p>
+ <div class="legend"><span><b style="background:var(--r-S)">S</b>主語「〜は」</span><span><b style="background:var(--r-V)">V</b>動詞「〜する」</span><span><b style="background:var(--r-O)">O</b>目的語「〜を」</span><span><b style="background:var(--r-C)">C</b>Sの説明</span><span><b style="background:var(--r-M)">修飾</b>くわしくする部分</span><span><b style="background:var(--p-conj)">つなぎ</b>but など</span></div>`;
+ h+=sentNav('chunk',a)+`<div class="card big"><div class="sno">文 ${si+1} / ${S.L.sentences.length}</div><div class="line">${chunkLine(si,a)}</div></div>`;
+ return h+pager(3,'次へ：品詞をつける');
+}
+function chunkLine(si,a){
+ const s=S.L.sentences[si],n=s.tokens.length,ch=chunksFrom(a.bounds[si],n);let h='';
+ ch.forEach((c,ci)=>{
+  const k=c[0]+'-'+c[1],role=a.roles[si][k]||'';
+  h+=`<span class="chunk"><span class="cw">`;
+  for(let t=c[0];t<=c[1];t++){
+   h+=`<span class="w">${esc(s.tokens[t].w)}${t===n-1?esc(s.end):''}</span>`;
+   if(t<c[1])h+=`<button class="gap" data-act="gap" data-s="${si}" data-g="${t}" aria-label="${esc(s.tokens[t].w)} のあとで区切る"></button>`;
+  }
+  h+=`</span><button class="role ${role?'set':''}" data-act="role" data-s="${si}" data-k="${k}" data-r="${role}">${role||'選ぶ'}</button></span>`;
+  if(ci<ch.length-1)h+=`<button class="gap on" data-act="gap" data-s="${si}" data-g="${c[1]}" aria-label="区切りを外す"></button>`;
+ });
+ return h;
+}
+function step3(a){
+ const si=S.si,x=S.L.sentences[si];
+ let h=`<p class="guide">色を選んでから単語をタップ。わからない単語には「？ わからない」をつけておこう。</p>`;
+ h+=`<div class="palette" role="toolbar" aria-label="品詞の選択">${POS.map(p=>`<button data-act="tool" data-v="${p.k}" aria-pressed="${S.tool===p.k}" style="--c:var(${p.v})"><i></i>${p.name}</button>`).join('')}
+ <button class="qt" data-act="tool" data-v="?" aria-pressed="${S.tool==='?'}">？ わからない</button><button class="xt" data-act="tool" data-v="x" aria-pressed="${S.tool==='x'}">消す</button></div>`;
+ h+=sentNav('pos',a);
+ h+=`<div class="card big"><div class="sno">文 ${si+1} / ${S.L.sentences.length}　<span class="muted">${a.pos[si].filter(Boolean).length} / ${x.tokens.length} 語</span></div><div class="wline">${x.tokens.map((tk,ti)=>{const p=a.pos[si][ti],q=a.q[si+'-'+ti];
+  return `<button class="wd ${p?'has':''} ${tk.glue?'gl':''}" data-act="word" data-s="${si}" data-t="${ti}" style="--c:${p?posVar(p):'var(--line)'}"><span class="en">${esc(tk.w)}</span><span class="pl">${p?posName(p):'－'}</span>${q?'<span class="qb">？</span>':''}</button>`}).join('')}<span class="end">${esc(x.end)}</span></div></div>`;
+ return h+pager(4,'次へ：提出する');
+}
+function step4(a){
+ const c=counts(S.L,a),rest=(c.mn-c.m)+(c.rn-c.r)+(c.pn-c.p);
+ const li=(lab,x,n)=>`<li><span>${lab}</span><span class="${x===n?'ok':'ng'}">${x} / ${n}</span></li>`;
+ return `<div class="card"><h2>提出の前に確認しよう</h2><ul class="check">${li('意味調べ',c.m,c.mn)}${li('かたまりの役割',c.r,c.rn)}${li('品詞',c.p,c.pn)}<li><span>？をつけた単語</span><span>${Object.keys(a.q).length} 個</span></li></ul>
+ ${rest?`<p class="muted">まだ空いている所が ${rest} 個あります。このまま提出もできますが、空いている所は不正解になります。</p>`:`<p class="muted">全部うまったね。よく顔晴りました！</p>`}
+ <label for="memo"><b>先生に聞きたいこと</b>（なくてもOK）</label>
+ <textarea id="memo" data-in="memo" placeholder="例：told のあとの her が何かわからない">${esc(a.memo)}</textarea>
+ <p><button class="primary" data-act="submit" ${S.submitting?'disabled':''}>${S.submitting?'送っています…':'提出する'}</button></p></div>`;
+}
+const nextBtn=(n,t)=>`<p><button class="secondary" data-act="step" data-v="${n}">${t}</button></p>`;
+
+function resultView(r){
+ const g=r.result,a=r.answers,L=S.L,M=g.marks;
+ const msg=g.rate>=90?'すばらしい！ほぼ完ぺきです。':g.rate>=70?'いい調子です。✗の所だけもう一度考えてみよう。':'✗の所を、もう一度考えてみよう。わからない所は授業で先生と一緒に確認します。';
+ let h=`<div class="card"><div class="score"><div class="big">${g.rate}<small>%</small></div><div><p style="margin:0 0 4px;font-weight:700">${msg}</p>
+ <div class="cats">${Object.entries(g.cats).map(([k,v])=>`<span>${k} <b>${v.hit}/${v.n}</b></span>`).join('')}</div></div></div>
+ <p class="muted">答えはまだ表示しません。自分で気づけたときが一番力になります。</p>
+ <p><button class="primary" data-act="retry">直して再提出する</button></p></div>`;
+ const J={pos:(si,ti)=>!!M.tok[si]?.[ti],chunk:(si,x,y)=>M.grp[si]?.[x+'-'+y]===true};
+ L.sentences.forEach((s,si)=>{h+=`<div class="card"><div class="sno">文 ${si+1}</div>${reviewLine(L,si,a,J)}</div>`});
+ h+=meaningTable(L.words.map(w=>({w:w.w,ans:(a.meanings[w.w]||'').trim(),ok:!!M.mean[w.w]})),false);
+ return h;
+}
+
+/* ===== 共通：見直し表示 ===== */
+/* J.pos(si,ti,答え) / J.chunk(si,from,to,役割) で ○✗ を決める。J.fix / J.keyline は講師だけ。 */
+function reviewLine(L,si,a,J){
+ const s=L.sentences[si],n=s.tokens.length,ch=chunksFrom(a.bounds[si],n);let allOk=true,h='<div class="rv">';
+ ch.forEach(c=>{
+  const role=a.roles[si][c[0]+'-'+c[1]]||'',cok=J.chunk(si,c[0],c[1],role);if(!cok)allOk=false;
+  h+=`<span class="chunk view ${cok?'':'bad'}"><span class="cw">`;
+  for(let t=c[0];t<=c[1];t++){
+   const p=a.pos[si][t],ok=J.pos(si,t,p),q=a.q[si+'-'+t];
+   h+=`<span class="wd static ${p?'has':''} ${ok?'':'bad'}" style="--c:${p?posVar(p):'var(--line)'}"><span class="en">${esc(s.tokens[t].w)}${t===n-1?esc(s.end):''}</span><span class="pl">${p?posName(p):'未'}${ok?'':J.fix?`<b class="fix">→${J.fix(si,t)}</b>`:'<b class="x">✗</b>'}</span>${q?'<span class="qb">？</span>':''}</span>`;
+  }
+  h+=`</span><span class="role static ${cok?'':'bad'}" data-r="${esc(role)}">${esc(role)||'未'}${cok?'':' ✗'}</span></span>`;
+ });
+ h+='</div>';
+ if(J.keyline){if(ch.length!==s.chunks.length)allOk=false;if(!allOk)h+=J.keyline(si)}
+ return h;
+}
+function meaningTable(list,teacher){
+ return `<div class="card"><h2>意味調べ</h2><table class="mlist">${list.map(i=>`<tr><td class="en" style="font-size:1.1rem">${esc(i.w)}</td><td>${esc(i.ans)||'<span class="muted">未入力</span>'}</td><td>${i.ok?'<span class="okc">✓</span>':'<span class="ngc">✗</span>'}${!i.ok&&teacher?` <span class="muted">例：${esc(i.key)}</span>`:''}</td></tr>`).join('')}</table></div>`;
+}
+
+/* ===== 講師画面 ===== */
+function grade(L,a){
+ const items=[];
+ L.sentences.forEach((s,si)=>{
+  s.tokens.forEach((tk,ti)=>items.push({cat:'品詞',s:si,t:ti,ok:posOk(tk,a.pos[si][ti]),key:tk.pos}));
+  const ch=chunksFrom(a.bounds[si],s.tokens.length);
+  s.chunks.forEach(c=>{const has=ch.some(x=>x[0]===c.from&&x[1]===c.to);const role=a.roles[si][c.from+'-'+c.to];items.push({cat:'かたまり',s:si,a:c.from,b:c.to,ok:has&&role===c.role,key:c.role,why:c.why})});
+ });
+ L.words.forEach(w=>{const v=(a.meanings[w.w]||'').trim();items.push({cat:'意味',w:w.w,ok:!!v&&(w.ok||[]).some(k=>v.includes(k)),ans:v,key:w.example||(w.ok||[])[0]||'',why:w.why})});
+ const by=c=>{const f=items.filter(i=>i.cat===c);return{n:f.length,hit:f.filter(i=>i.ok).length}};
+ const hit=items.filter(i=>i.ok).length;
+ return{items,rate:items.length?Math.round(hit/items.length*100):0,cats:{意味:by('意味'),かたまり:by('かたまり'),品詞:by('品詞')}};
+}
+function teacherJudge(L){
+ return{
+  pos:(si,ti,p)=>posOk(L.sentences[si].tokens[ti],p),
+  chunk:(si,x,y,role)=>L.sentences[si].chunks.some(c=>c.from===x&&c.to===y&&c.role===role),
+  fix:(si,ti)=>posName(L.sentences[si].tokens[ti].pos),
+  keyline:si=>`<p class="keyline">正しい区切り：${L.sentences[si].chunks.map(c=>`[${esc(words(L,si,c.from,c.to))}]<sub>${esc(c.role)}</sub>`).join(' ')}</p>`
+ };
+}
+function teacherView(){
+ const T=S.tData,ls=S.tLessons||[];
+ const cur=ls.find(l=>l.lessonId===S.tLessonId);
+ let h=`<section class="lhead"><div><p class="unit">${esc(cur?.title||'')}${cur?.note?`<span class="tag">${esc(cur.note)}</span>`:''}</p><h1>提出状況</h1></div>
+ <div class="tctl">${ls.length?`<label class="who">レッスン<select data-in="tlesson">${ls.map(l=>`<option value="${esc(l.lessonId)}" ${l.lessonId===S.tLessonId?'selected':''}>${esc(l.grade)} ${esc(l.title)}</option>`).join('')}</select></label>`:''}
+ <button class="secondary" data-act="treload">最新にする</button></div></section>`;
+ if(S.tLessons&&!ls.length)return h+`<div class="card"><p>レッスンがまだ登録されていません。スプレッドシートの Lessons シートに入れてください。</p></div>`;
+ if(!T||T.lesson.lessonId!==S.tLessonId)return h+loadingView();
+ const L=T.lesson;
+ const rows=T.students.map(s=>({s,r:s.latest,g:s.latest?grade(L,s.latest.answers):null}));
+ const subs=rows.filter(x=>x.g);
+ const avg=subs.length?Math.round(subs.reduce((t,x)=>t+x.g.rate,0)/subs.length):0;
+ const chk=subs.filter(x=>x.r.checkedAt).length;
+ const qn=subs.reduce((t,x)=>t+Object.keys(x.r.answers.q).length,0);
+ h+=`<div class="stats"><div>提出<b>${subs.length} / ${rows.length}人</b></div><div>平均正答率<b>${avg}%</b></div><div>講師チェック済み<b>${chk} / ${subs.length}人</b></div><div>？の数<b>${qn}個</b></div></div>
+ <div class="tw"><table class="roster"><thead><tr><th>生徒</th><th>状況</th><th>正答率（線＝70%）</th><th>意味・かたまり・品詞</th><th>？</th><th>提出回数</th><th>チェック</th></tr></thead><tbody>`;
+ if(!rows.length)h+=`<tr><td colspan="7" class="muted">このレッスンの生徒がいません（Students シートの学年か、Assignments シートを確かめてください）。</td></tr>`;
+ rows.forEach(({s,r,g})=>{
+  const st=!g?'<span class="st none">未提出</span>':r.checkedAt?'<span class="st done">チェック済み</span>':'<span class="st wait">チェック待ち</span>';
+  h+=`<tr class="row ${S.tsel===s.studentId?'sel':''}" data-act="trow" data-v="${esc(s.studentId)}" tabindex="0"><td><b>${esc(s.name)}</b></td><td>${st}</td>
+  <td>${g?`<span class="bar"><i class="${g.rate<70?'low':''}" style="width:${g.rate}%"></i><em style="left:70%"></em></span>${g.rate}%`:'<span class="muted">－</span>'}</td>
+  <td>${g?Object.values(g.cats).map(v=>`${v.hit}/${v.n}`).join('　'):'<span class="muted">－</span>'}</td>
+  <td>${g?Object.keys(r.answers.q).length:'－'}</td><td>${r?.attempt||'－'}</td>
+  <td class="muted">${r?.checkedAt?`${esc(fmt(r.checkedAt))}<br>${esc(r.checkedBy)}`:''}</td></tr>`;
+ });
+ h+=`</tbody></table></div>`;
+ h+=classInsight(L,subs);
+ if(S.tsel)h+=detailView(L,S.tsel);
+ h+=`<p class="foot">${esc(fmt(T.loadedAt))} の時点の情報です。<button class="secondary" data-act="treload">最新にする</button></p>`;
+ return h;
+}
+function classInsight(L,subs){
+ const tot={},miss={},qs={};
+ subs.forEach(({g,r})=>{
+  g.items.filter(i=>i.cat==='品詞').forEach(i=>{tot[i.key]=(tot[i.key]||0)+1;if(!i.ok)miss[i.key]=(miss[i.key]||0)+1});
+  Object.keys(r.answers.q).forEach(k=>{const[s,t]=k.split('-').map(Number);const w=L.sentences[s]?.tokens[t]?.w;if(w)qs[w]=(qs[w]||0)+1});
+ });
+ const bars=Object.keys(tot).map(k=>({k,r:Math.round((miss[k]||0)/tot[k]*100)})).sort((x,y)=>y.r-x.r);
+ const qlist=Object.entries(qs).sort((x,y)=>y[1]-x[1]);
+ return `<div class="grid2"><div class="card"><h2>品詞ごとのまちがい率</h2>${bars.map(b=>`<div class="hb"><span>${posName(b.k)}</span><span class="bar"><i class="${b.r>30?'low':''}" style="width:${b.r}%"></i></span><span>${b.r}%</span></div>`).join('')||'<p class="muted">提出がありません</p>'}</div>
+ <div class="card"><h2>？が付いた単語</h2>${qlist.length?`<div class="chips">${qlist.map(([w,n])=>`<span class="chip">${esc(w)}<span>${n}</span></span>`).join('')}</div><p class="muted">複数の生徒が？を付けた単語は、文法の時間の導入に使えます。</p>`:'<p class="muted">？はまだありません</p>'}</div></div>`;
+}
+function scaffolds(L,a,g){
+ const out=[];
+ Object.keys(a.q).forEach(k=>{const[s,t]=k.split('-').map(Number);const w=L.sentences[s]?.tokens[t]?.w;if(w)out.push(`「${w}」に？。答えを言う前に「この単語は文の中で何をしている？」と聞き、自分の言葉で説明してもらう`)});
+ g.items.filter(i=>i.cat==='かたまり'&&!i.ok).slice(0,2).forEach(i=>{out.push(`[${words(L,i.s,i.a,i.b)}]（正：${i.key}）。「どこからどこまでが一つの意味？」と区切りを考えさせる`)});
+ const miss={};g.items.filter(i=>i.cat==='品詞'&&!i.ok).forEach(i=>miss[i.key]=(miss[i.key]||0)+1);
+ const top=Object.entries(miss).sort((x,y)=>y[1]-x[1])[0];
+ if(top&&top[1]>=2)out.push(`${posName(top[0])}を${top[1]}回まちがえている。同じ品詞の例文を2〜3個見せて、共通点を本人に見つけてもらう`);
+ return out.slice(0,5);
+}
+function mistakes(L,a){
+ const g=grade(L,a),bySent=L.sentences.map(()=>[]),mean=[];
+ g.items.forEach(i=>{
+  if(i.ok)return;
+  if(i.cat==='品詞'){
+   const tk=L.sentences[i.s].tokens[i.t],ans=a.pos[i.s][i.t],pw=POS_WHY[i.key]||{};
+   bySent[i.s].push({type:'品詞',order:i.t+.5,target:tk.w,ans:ans?posName(ans):'未入力',key:posName(i.key)+((tk.alt||[]).length?`（${tk.alt.map(posName).join('・')}でも正解）`:''),
+    why:tk.why||pw.why||'',ask:pw.ask||'',q:!!a.q[i.s+'-'+i.t]});
+  }else if(i.cat==='かたまり'){
+   const sx=L.sentences[i.s];
+   const ov=chunksFrom(a.bounds[i.s],sx.tokens.length).filter(c=>c[1]>=i.a&&c[0]<=i.b);
+   const ans=ov.map(c=>`[${words(L,i.s,c[0],c[1])}] ${a.roles[i.s][c[0]+'-'+c[1]]||'未'}`).join('　');
+   bySent[i.s].push({type:'かたまり',order:i.a,target:`[${words(L,i.s,i.a,i.b)}]`,ans,key:`[${words(L,i.s,i.a,i.b)}] ${i.key}`,
+    why:i.why||ROLE_WHY[i.key]||'',ask:ROLE_ASK[i.key]||'',q:false});
+  }else{
+   mean.push({type:'意味',target:i.w,ans:i.ans||'未入力',key:i.key,why:i.why||'本文の中で合う意味を選ぶ。',ask:'「この文の中だと、どんな意味になりそう？」と聞く'});
+  }
+ });
+ bySent.forEach(l=>l.sort((x,y)=>x.order-y.order));
+ return{g,bySent,mean};
+}
+function mkItem(m){
+ return `<div class="mk"><div class="mk-h"><span class="mk-type t-${m.type}">${m.type}</span><b class="en">${esc(m.target)}</b>${m.q?'<span class="qtag">？付き</span>':''}</div>
+ <div class="mk-ans"><span class="was">生徒：${esc(m.ans)}</span><span class="right">正解：${esc(m.key)}</span></div>
+ <p class="why"><b>理由</b>${esc(m.why)}</p><p class="ask"><b>聞き方</b>${esc(m.ask)}</p></div>`;
+}
+function markedSentence(L,si,a){
+ const x=L.sentences[si],ch=chunksFrom(a.bounds[si],x.tokens.length),badChunkTok=new Set();
+ x.chunks.forEach(c=>{const has=ch.some(y=>y[0]===c.from&&y[1]===c.to);if(!(has&&a.roles[si][c.from+'-'+c.to]===c.role))for(let t=c.from;t<=c.to;t++)badChunkTok.add(t)});
+ return `<p class="msent">${x.tokens.map((tk,ti)=>{const bp=!posOk(tk,a.pos[si][ti]);const cls=[bp?'bp':'',badChunkTok.has(ti)?'bc':''].join(' ');return `${ti&&!tk.glue?' ':''}<span class="${cls}">${esc(tk.w)}</span>`}).join('')}${esc(x.end)}</p>`;
+}
+function detailView(L,id){
+ const st=S.tData.students.find(x=>x.studentId===id);if(!st)return '';
+ const r=st.latest;
+ if(!r){const c=counts(L,st.draft?fitA(L,st.draft):blankA(L));return `<div class="card detail"><h2>${esc(st.name)}</h2><p>まだ提出していません。今の進み具合：意味 ${c.m}/${c.mn}、かたまり ${c.r}/${c.rn}、品詞 ${c.p}/${c.pn}</p><p class="muted">授業の最初に「どこで止まった？」と聞き、続きを一緒に始めると提出につながります。</p></div>`}
+ const a=r.answers,{g,bySent,mean}=mistakes(L,a),sc=scaffolds(L,a,g);
+ const cnt=k=>g.cats[k].n-g.cats[k].hit;
+ const dis=S.checking?'disabled':'';
+ let h=`<div class="detail"><div class="card"><h2><span>${esc(st.name)}　${g.rate}%</span><span class="checkbar">${r.checkedAt?`<span class="muted">${esc(fmt(r.checkedAt))} ${esc(r.checkedBy)} がチェック</span><button class="secondary" data-act="uncheck" data-v="${esc(r.submissionId)}" ${dis}>取り消す</button>`:`<button class="primary" data-act="check" data-v="${esc(r.submissionId)}" ${dis}>${esc(S.auth.teacherName)}としてチェック済みにする</button>`}</span></h2>
+ <p class="muted">${esc(fmt(r.submittedAt))} 提出（${r.attempt}回目）</p>
+ <div class="mcount"><span>まちがい</span><span class="t-品詞">品詞 ${cnt('品詞')}</span><span class="t-かたまり">かたまり ${cnt('かたまり')}</span><span class="t-意味">意味 ${cnt('意味')}</span></div>
+ <h2 style="margin-top:12px">授業で聞くこと（足場かけの候補）</h2>${sc.length?`<ol class="scaf">${sc.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`:'<p class="muted">大きなつまずきはありません。正確にできたことを具体的に認めて、文法に進みましょう。</p>'}
+ ${a.memo?`<h2 style="margin-top:12px">生徒からの質問</h2><p class="memo">${esc(a.memo)}</p>`:''}</div>
+ <h2 class="sech">まちがい一覧</h2><p class="muted" style="margin-top:-4px">赤字＝品詞のまちがい、点線＝かたまりのまちがい</p>`;
+ bySent.forEach((list,si)=>{
+  if(!list.length){h+=`<div class="card okrow"><span class="sno">文 ${si+1}</span><span class="okc">まちがいなし ✓</span><span class="msent small">${esc(jt(L.sentences[si].tokens)+L.sentences[si].end)}</span></div>`;return}
+  h+=`<div class="card"><div class="sno">文 ${si+1}　<span class="ngc">${list.length}か所</span></div>${markedSentence(L,si,a)}<div class="mks">${list.map(mkItem).join('')}</div></div>`;
+ });
+ if(mean.length)h+=`<div class="card"><div class="sno">意味調べ　<span class="ngc">${mean.length}か所</span></div><div class="mks">${mean.map(mkItem).join('')}</div></div>`;
+ const J=teacherJudge(L);
+ h+=`<details class="card"><summary>生徒の答え全体を色分けで見る</summary>${L.sentences.map((x,si)=>`<div class="sno" style="margin-top:12px">文 ${si+1}</div>${reviewLine(L,si,a,J)}`).join('')}</details>`;
+ return h+'</div>';
+}
+
+/* ===== 操作 ===== */
+document.addEventListener('click',e=>{
+ const el=e.target.closest('[data-act]');if(!el||el.disabled)return;
+ const act=el.dataset.act,a=S.draft;
+ if(act==='dismiss'){S.error=''}
+ else if(act==='logout'){logout();return}
+ else if(act==='lrole'){S.form.role=el.dataset.v;S.error=''}
+ else if(act==='ccreset'){S.roster=null;S.error=''}
+ else if(act==='open'){openLesson(el.dataset.v);return}
+ else if(act==='back'){backToList();return}
+ else if(act==='step'){S.step=+el.dataset.v;S.si=0;window.scrollTo(0,0)}
+ else if(act==='sent'){const v=+el.dataset.v;if(v>=0&&v<S.L.sentences.length)S.si=v}
+ else if(act==='gap'){const si=+el.dataset.s,g=+el.dataset.g,b=a.bounds[si];const i=b.indexOf(g);i>=0?b.splice(i,1):b.push(g);markDirty()}
+ else if(act==='role'){const si=+el.dataset.s,k=el.dataset.k,c=a.roles[si][k]||'';a.roles[si][k]=ROLE_CYCLE[(ROLE_CYCLE.indexOf(c)+1)%ROLE_CYCLE.length];if(!a.roles[si][k])delete a.roles[si][k];markDirty()}
+ else if(act==='tool'){S.tool=el.dataset.v}
+ else if(act==='word'){const si=+el.dataset.s,ti=+el.dataset.t,k=si+'-'+ti;
+  if(S.tool==='?'){a.q[k]?delete a.q[k]:a.q[k]=1}
+  else if(S.tool==='x'){a.pos[si][ti]=null}
+  else{a.pos[si][ti]=a.pos[si][ti]===S.tool?null:S.tool}
+  markDirty()}
+ else if(act==='submit'){submit();return}
+ else if(act==='showres'){S.showResult=true}
+ else if(act==='retry'){S.showResult=false;S.step=1;window.scrollTo(0,0)}
+ else if(act==='trow'){S.tsel=el.dataset.v}
+ else if(act==='check'){setCheck(el.dataset.v,true);return}
+ else if(act==='uncheck'){setCheck(el.dataset.v,false);return}
+ else if(act==='treload'){loadTeacher();return}
+ else return;
+ render();
+});
+document.addEventListener('submit',e=>{
+ const f=e.target.closest('[data-submit]');if(!f)return;
+ e.preventDefault();if(S.busy)return;
+ const k=f.dataset.submit;
+ if(k==='code')enterCode();else if(k==='student')loginStudent();else if(k==='teacher')loginTeacher();
+});
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('tr[data-act]')){S.tsel=e.target.dataset.v;render()}});
+document.addEventListener('input',e=>{
+ const el=e.target,k=el.dataset.in;if(!k)return;
+ if(k==='meaning'){S.draft.meanings[el.dataset.w]=el.value;markDirty()}
+ else if(k==='memo'){S.draft.memo=el.value;markDirty()}
+ else if(k in S.form){S.form[k]=el.value}
+});
+document.addEventListener('change',e=>{
+ const el=e.target,k=el.dataset.in;
+ if(k==='tlesson'){S.tLessonId=el.value;S.tsel='';S.tData=null;saveLogin();loadTeacher()}
+ else if(k==='sid'||k==='tname'){S.form[k]=el.value}
+});
+window.addEventListener('pagehide',beaconFlush);
+document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')beaconFlush()});
+
+/* 動作確認スクリプト（tools/console-check.js）から使う */
+window.HC={VERSION,api,state:S,render,get apiUrl(){return API_URL}};
+start();
+</script>
+</body>
+</html>

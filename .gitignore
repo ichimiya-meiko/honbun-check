@@ -1,0 +1,7 @@
+# 教科書本文が入ったファイル（コミットしない）
+reference/
+
+# OS が作るファイル
+.DS_Store
+Thumbs.db
+desktop.ini
