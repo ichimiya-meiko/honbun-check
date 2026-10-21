@@ -238,18 +238,44 @@ details.card summary{cursor:pointer;font-weight:700}
 .tctl .secondary{min-height:44px}
 .loading{padding:30px 0;text-align:center}
 button[disabled]{opacity:.5;cursor:default}
+
+/* ===== v2 で足したもの ===== */
+.src{margin:0;color:var(--sub);font-size:.78rem;line-height:1.5}
+.lcard .src{display:block;margin-top:2px}
+.login .modes{flex-wrap:wrap}
+.tabs{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+.tabs button{border:1.5px solid var(--line);background:var(--paper);border-radius:999px;padding:6px 18px;min-height:44px;font-weight:700;color:var(--sub)}
+.tabs button[aria-pressed="true"]{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.jsonbox{width:100%;min-height:220px;font-family:ui-monospace,Consolas,monospace;font-size:.85rem;line-height:1.5}
+.btnrow{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:10px}
+.btnrow .primary,.btnrow .secondary{min-height:44px}
+.errlist{margin:6px 0 0;padding-left:1.2em;color:var(--ng)}
+.errlist li{margin:2px 0}
+.okmsg{color:var(--ok);font-weight:700}
+.lrow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line)}
+.lrow:last-child{border-bottom:0}
+.lrow .secondary{min-height:44px;flex:none}
+.field{display:flex;flex-direction:column;gap:4px;margin:0 0 12px;font-weight:700}
+.field select,.field input{min-height:44px;font-weight:400}
+.sgrade{margin:12px 0 4px;display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.sgrade h3{margin:0;font-size:1rem}
+.sgrade .linkbtn{min-height:44px}
+.stu{display:flex;align-items:center;gap:10px;min-height:44px;padding:2px 4px;border-bottom:1px solid var(--line);cursor:pointer}
+.stu input{width:22px;height:22px;flex:none}
+.stu .nm{flex:1}
+.pvbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
 </style>
 </head>
 <body>
 <header><div class="hin">
-  <div class="brand">本文分析ノート<small>v1</small></div>
+  <div class="brand">本文分析ノート<small>v2</small></div>
   <div class="hright" id="hright"></div>
 </div></header>
 <main id="main"></main>
 
 <script>
 /* ===== 設定 ===== */
-const VERSION=1;
+const VERSION=2;
 /* ↓ GAS を「ウェブアプリ」として公開したときの URL を ' ' の間に貼る（docs/setup.md 手順7） */
 const API_URL='https://script.google.com/macros/s/AKfycbxUiT8hdHzK3Ol4ZKZJT1hFNnyWGQolkUCGVA3amXMKUl_dXqweX0BrD6XMpVfs9Q_j/exec';
 
@@ -296,7 +322,7 @@ function lsSet(k,v){try{localStorage.setItem(k,JSON.stringify(v))}catch(e){}}
 /* ===== 通信 ===== */
 async function api(action,payload={}){
  if(!API_URL)throw new Error('API_URL が設定されていません。');
- const body=Object.assign({action,classCode:S.classCode},S.auth?.role==='teacher'?{teacherPass:S.auth.teacherPass}:{},payload);
+ const body=Object.assign({action,classCode:S.classCode},S.auth?.token?{token:S.auth.token}:{},payload);
  const ctl=new AbortController(),tm=setTimeout(()=>ctl.abort(),30000);
  let res;
  try{res=await fetch(API_URL,{method:'POST',body:JSON.stringify(body),signal:ctl.signal})}
@@ -310,15 +336,17 @@ async function api(action,payload={}){
 
 /* ===== 状態 ===== */
 const S={
- classCode:'',roster:null,form:{cc:'',role:'student',sid:'',tname:'',pass:''},auth:null,screen:'login',busy:false,error:'',
+ classCode:'',roster:null,form:{cc:'',role:'student',sid:'',pin:'',tname:'',pass:'',apass:''},auth:null,screen:'login',busy:false,error:'',
  lessons:null,L:null,draft:null,sub:null,step:1,si:0,tool:'名',showResult:false,submitting:false,submitId:null,
- tLessons:null,tLessonId:'',tData:null,tsel:'',checking:false
+ tLessons:null,tLessonId:'',tData:null,tsel:'',checking:false,
+ /* 教室長画面 */
+ atab:'lesson',aData:null,aJson:'',aCheck:null,aSave:null,aBusy:false,aMsg:'',aLessonId:'',aDue:'',aSel:new Set()
 };
 const SV={state:'idle',ver:0,savedVer:0,timer:null,inflight:null,again:false};
 function saveLogin(){lsSet(LOGIN_KEY,{classCode:S.classCode,auth:S.auth,tLessonId:S.tLessonId})}
 
 function handleError(e){
- if(e.code==='class'||e.code==='student'||(e.code==='teacher'&&S.screen==='teacher')){logout(e.message);return}
+ if(e.code==='class'||(e.code==='auth'&&S.auth)){logout(e.message);return}
  S.error=e.message;
 }
 
@@ -348,6 +376,7 @@ function counts(L,a){
 
 /* ===== 下書きの自動保存 ===== */
 function markDirty(){
+ if(S.screen==='preview')return;
  SV.ver++;SV.state='dirty';S.submitId=null;
  lsSet(draftKey(S.auth.studentId,S.L.lessonId),{answers:S.draft,pending:true});
  clearTimeout(SV.timer);SV.timer=setTimeout(flushDraft,3000);
@@ -361,7 +390,7 @@ function flushDraft(){
  SV.state='saving';updateSaveState();
  SV.inflight=(async()=>{
   try{
-   await api('saveDraft',{studentId:sid,lessonId:lid,answers});
+   await api('saveDraft',{lessonId:lid,answers});
    SV.savedVer=Math.max(SV.savedVer,ver);
    if(SV.ver===ver){SV.state='saved';lsSet(draftKey(sid,lid),{answers,pending:false})}else SV.state='dirty';
   }catch(e){
@@ -376,7 +405,7 @@ function flushDraft(){
 }
 function beaconFlush(){
  if(S.auth?.role==='student'&&S.L&&SV.ver!==SV.savedVer&&API_URL&&navigator.sendBeacon){
-  navigator.sendBeacon(API_URL,JSON.stringify({action:'saveDraft',classCode:S.classCode,studentId:S.auth.studentId,lessonId:S.L.lessonId,answers:S.draft}));
+  navigator.sendBeacon(API_URL,JSON.stringify({action:'saveDraft',classCode:S.classCode,token:S.auth.token,lessonId:S.L.lessonId,answers:S.draft}));
  }
 }
 function updateSaveState(){
@@ -390,45 +419,56 @@ function updateSaveState(){
 async function start(){
  const saved=lsGet(LOGIN_KEY)||{};
  S.classCode=saved.classCode||'';S.form.cc=S.classCode;S.tLessonId=saved.tLessonId||'';
- if(saved.auth&&API_URL){
+ if(saved.auth?.token&&API_URL){
   S.auth=saved.auth;S.classCode=saved.auth.classCode||S.classCode;
   if(S.auth.role==='student')return goList();
+  if(S.auth.role==='admin')return loadAdmin();
   return loadTeacher();
  }
  render();
 }
 async function logout(msg){
  if(S.auth?.role==='student')await flushDraft().catch(()=>{});
- S.auth=null;S.roster=null;S.screen='login';S.lessons=null;S.L=null;S.tData=null;S.tLessons=null;S.tsel='';S.form.pass='';
+ S.auth=null;S.roster=null;S.screen='login';S.lessons=null;S.L=null;S.tData=null;S.tLessons=null;S.tsel='';
+ S.aData=null;S.aJson='';S.aCheck=null;S.aSave=null;S.aMsg='';S.aSel=new Set();
+ S.form.pin='';S.form.pass='';S.form.apass='';
  S.error=msg||'';saveLogin();render();window.scrollTo(0,0);
 }
 async function enterCode(){
  const cc=S.form.cc.trim();if(!cc){S.error='教室コードを入れてください。';return render()}
  S.busy=true;S.error='';S.classCode=cc;render();
  try{
-  const j=await api('login');S.roster=j;saveLogin();
-  S.form.sid=S.form.sid||j.students[0]?.studentId||'';S.form.tname=S.form.tname||j.teachers[0]||'';
+  const j=await api('listTeachers');S.roster=j;saveLogin();
+  S.form.tname=S.form.tname||j.teachers[0]||'';
  }catch(e){S.error=e.message}
  S.busy=false;render();
 }
-async function loginStudent(){
- const st=S.roster.students.find(x=>x.studentId===S.form.sid);if(!st)return;
- S.auth={role:'student',classCode:S.classCode,studentId:st.studentId,name:st.name};saveLogin();S.error='';
- goList();
-}
-async function loginTeacher(){
- if(!S.form.tname){S.error='講師の名前を選んでください。';return render()}
- S.auth={role:'teacher',classCode:S.classCode,teacherName:S.form.tname,teacherPass:S.form.pass.trim()};
+/* 生徒・講師・教室長のログイン。合えば通行証（token）をもらって保存する */
+async function doLogin(role){
+ const f=S.form;let payload;
+ if(role==='student'){
+  if(!f.sid.trim()||!/^\d{4}$/.test(f.pin.trim())){S.error='生徒番号と、4けたの PIN を入れてください。';return render()}
+  payload={role,studentId:f.sid.trim(),pin:f.pin.trim()};
+ }else if(role==='teacher'){
+  if(!f.tname){S.error='講師の名前を選んでください。';return render()}
+  payload={role,teacherName:f.tname,password:f.pass.trim()};
+ }else payload={role,password:f.apass.trim()};
  S.busy=true;S.error='';render();
- try{const j=await api('listLessons');S.tLessons=j.lessons;saveLogin();S.busy=false;S.form.pass='';return loadTeacher()}
- catch(e){S.auth=null;S.error=e.message}
+ try{
+  const j=await api('login',payload);
+  S.auth=role==='student'?{role,classCode:S.classCode,token:j.token,studentId:j.studentId,name:j.name}
+   :role==='teacher'?{role,classCode:S.classCode,token:j.token,teacherName:j.teacherName}
+   :{role,classCode:S.classCode,token:j.token};
+  f.pin='';f.pass='';f.apass='';saveLogin();S.busy=false;
+  return role==='student'?goList():role==='teacher'?loadTeacher():loadAdmin();
+ }catch(e){S.error=e.message;if(e.code==='class')S.roster=null}
  S.busy=false;render();
 }
 
 /* 生徒 */
 async function goList(){
  S.screen='list';S.lessons=null;S.L=null;S.error='';render();
- try{const j=await api('listAssignments',{studentId:S.auth.studentId});S.lessons=j.lessons}catch(e){handleError(e)}
+ try{const j=await api('listAssignments');S.lessons=j.lessons}catch(e){handleError(e)}
  render();
 }
 async function openLesson(id){
@@ -436,7 +476,7 @@ async function openLesson(id){
  Object.assign(SV,{state:'idle',ver:0,savedVer:0,again:false});
  render();window.scrollTo(0,0);
  try{
-  const j=await api('getLessonForStudent',{studentId:S.auth.studentId,lessonId:id});
+  const j=await api('getLessonForStudent',{lessonId:id});
   const L=j.lesson;
   const local=lsGet(draftKey(S.auth.studentId,id));
   const resend=!!(local?.pending&&local.answers);
@@ -449,13 +489,14 @@ async function openLesson(id){
 }
 async function backToList(){await flushDraft().catch(()=>{});goList();window.scrollTo(0,0)}
 async function submit(){
+ if(S.screen==='preview'){S.sub={answers:clone(S.draft),result:localResult(S.L,S.draft),attempt:1,submittedAt:''};S.showResult=true;window.scrollTo(0,0);return render()}
  if(S.submitting)return;
  S.submitting=true;S.error='';clearTimeout(SV.timer);render();
  const id=S.submitId||(S.submitId=uuid());
  const ver=SV.ver,answers=clone(S.draft),sid=S.auth.studentId,lid=S.L.lessonId;
  let j=null,err=null;
  for(let i=0;i<3&&!j;i++){
-  try{j=await api('submit',{studentId:sid,lessonId:lid,submissionId:id,answers})}
+  try{j=await api('submit',{lessonId:lid,submissionId:id,answers})}
   catch(e){err=e;if(e.code)break;await new Promise(r=>setTimeout(r,1500))}
  }
  S.submitting=false;
@@ -487,7 +528,7 @@ async function setCheck(id,on){
  if(S.checking)return;
  S.checking=true;S.error='';render();
  try{
-  const j=await api(on?'check':'uncheck',{submissionId:id,teacherName:S.auth.teacherName});
+  const j=await api(on?'check':'uncheck',{submissionId:id});
   const st=S.tData.students.find(x=>x.latest?.submissionId===id);
   if(st){st.latest.checkedBy=j.checkedBy;st.latest.checkedAt=j.checkedAt}
  }catch(e){handleError(e)}
@@ -500,7 +541,8 @@ function render(){
  let h=S.error?`<p class="banner err" role="alert">${esc(S.error)}<button class="linkbtn" data-act="dismiss">閉じる</button></p>`:'';
  if(S.screen==='login')h+=loginView();
  else if(S.screen==='list')h+=listView();
- else if(S.screen==='lesson')h+=S.L?studentView():loadingView();
+ else if(S.screen==='lesson'||S.screen==='preview')h+=S.L?studentView():loadingView();
+ else if(S.screen==='admin')h+=adminView();
  else h+=teacherView();
  document.getElementById('main').innerHTML=h;
  updateSaveState();
@@ -508,7 +550,7 @@ function render(){
 const loadingView=()=>`<p class="muted loading">読み込み中…</p>`;
 function headRight(){
  if(!S.auth)return '';
- const name=S.auth.role==='student'?S.auth.name:`${S.auth.teacherName}（講師）`;
+ const name=S.auth.role==='student'?S.auth.name:S.auth.role==='admin'?'教室長':`${S.auth.teacherName}（講師）`;
  return `<span id="savest" class="savest"></span><span>${esc(name)}</span><button class="linkbtn" data-act="logout">ログアウト</button>`;
 }
 function loginView(){
@@ -516,14 +558,18 @@ function loginView(){
  if(!S.roster)return `<form class="card login" data-submit="code"><h1>本文分析ノート</h1>
   <label for="cc">教室コード</label><input id="cc" type="text" data-in="cc" value="${esc(S.form.cc)}" autocomplete="off" autocapitalize="off" spellcheck="false">
   <button class="primary" ${S.busy?'disabled':''}>${S.busy?'確認しています…':'次へ'}</button></form>`;
- const R=S.roster,t=S.form.role==='teacher';
- let h=`<form class="card login" data-submit="${t?'teacher':'student'}"><h1>本文分析ノート</h1>
-  <div class="modes" role="group" aria-label="使う人"><button type="button" data-act="lrole" data-v="student" aria-pressed="${!t}">生徒</button><button type="button" data-act="lrole" data-v="teacher" aria-pressed="${t}">講師</button></div>`;
- if(!t){
-  h+=`<label for="lsid">名前</label><select id="lsid" data-in="sid">${R.students.map(s=>`<option value="${esc(s.studentId)}" ${s.studentId===S.form.sid?'selected':''}>${esc(s.grade)} ${esc(s.name)}</option>`).join('')}</select>`;
- }else{
+ const R=S.roster,role=S.form.role;
+ const tab=(v,lab)=>`<button type="button" data-act="lrole" data-v="${v}" aria-pressed="${role===v}">${lab}</button>`;
+ let h=`<form class="card login" data-submit="${role}"><h1>本文分析ノート</h1>
+  <div class="modes" role="group" aria-label="使う人">${tab('student','生徒')}${tab('teacher','講師')}${tab('admin','教室長')}</div>`;
+ if(role==='student'){
+  h+=`<label for="lsid">生徒番号</label><input id="lsid" type="text" data-in="sid" value="${esc(S.form.sid)}" autocomplete="username" autocapitalize="off" spellcheck="false">
+  <label for="lpin">PIN（4けたの数字）</label><input id="lpin" type="password" data-in="pin" value="${esc(S.form.pin)}" inputmode="numeric" pattern="[0-9]*" maxlength="4" autocomplete="current-password">`;
+ }else if(role==='teacher'){
   h+=`<label for="ltn">講師の名前</label><select id="ltn" data-in="tname">${R.teachers.map(n=>`<option ${n===S.form.tname?'selected':''}>${esc(n)}</option>`).join('')}</select>
-  <label for="lpw">講師用の合言葉</label><input id="lpw" type="password" data-in="pass" value="${esc(S.form.pass)}" autocomplete="current-password">`;
+  <label for="lpw">講師パスワード</label><input id="lpw" type="password" data-in="pass" value="${esc(S.form.pass)}" autocomplete="current-password">`;
+ }else{
+  h+=`<label for="lap">管理パスワード</label><input id="lap" type="password" data-in="apass" value="${esc(S.form.apass)}" autocomplete="current-password">`;
  }
  return h+`<button class="primary" ${S.busy?'disabled':''}>${S.busy?'確認しています…':'はじめる'}</button>
   <p class="muted">教室コード：${esc(S.classCode)}<button type="button" class="linkbtn" data-act="ccreset">変える</button></p></form>`;
@@ -536,18 +582,20 @@ function listView(){
  if(!S.lessons.length)return h+`<div class="card"><p>配られた宿題はまだありません。先生に伝えてください。</p></div>`;
  return h+S.lessons.map(l=>{
   const st=l.attempts?(l.checked?`<span class="st done">先生がチェックしました</span>`:`<span class="st done">提出ずみ（${l.attempts}回目・${l.rate}%）</span>`):l.hasDraft?`<span class="st wait">とちゅう</span>`:`<span class="st none">まだ</span>`;
-  return `<button class="card lcard" data-act="open" data-v="${esc(l.lessonId)}"><span><span class="unit">${esc(l.note)}</span><b>${esc(l.title)}</b>${l.dueDate?`<span class="muted">期限 ${esc(fmtDate(l.dueDate))}</span>`:''}</span>${st}</button>`;
+  return `<button class="card lcard" data-act="open" data-v="${esc(l.lessonId)}"><span><span class="unit">${esc(l.note)}</span><b>${esc(l.title)}</b>${l.source?`<span class="src">${esc(l.source)}</span>`:''}${l.dueDate?`<span class="muted">期限 ${esc(fmtDate(l.dueDate))}</span>`:''}</span>${st}</button>`;
  }).join('');
 }
 function studentView(){
  const L=S.L,a=S.draft,r=S.sub;
- let h=`<section class="lhead"><div><p class="unit">${esc(L.title)}${L.note?`<span class="tag">${esc(L.note)}</span>`:''}</p><h1>本文分析ノート</h1></div>
- <button class="secondary" data-act="back">一覧にもどる</button></section>`;
+ const pv=S.screen==='preview';
+ let h=pv?`<div class="pvbar"><p class="banner" style="margin:0">プレビュー中です。生徒にはこう見えます。入力しても保存されません。</p><button class="secondary" data-act="pvback">教室長画面にもどる</button></div>`:'';
+ h+=`<section class="lhead"><div><p class="unit">${esc(L.title)}${L.note?`<span class="tag">${esc(L.note)}</span>`:''}</p>${srcLine(L.source)}<h1>本文分析ノート</h1></div>
+ ${pv?'':'<button class="secondary" data-act="back">一覧にもどる</button>'}</section>`;
  if(r&&S.showResult)return h+resultView(r);
  const c=counts(L,a);
  const steps=[['意味調べ',`${c.m}/${c.mn}`],['かたまり',`${c.r}/${c.rn}`],['品詞',`${c.p}/${c.pn}`],['提出','']];
  h+=`<nav class="steps" aria-label="手順">${steps.map((s,i)=>`<button data-act="step" data-v="${i+1}" aria-current="${S.step===i+1?'step':'false'}"><span class="num">${i+1}</span><span class="lab">${s[0]}</span><span class="cnt">${s[1]}</span></button>`).join('')}</nav>`;
- if(r)h+=`<p class="banner">${esc(fmt(r.submittedAt))} に提出しました（${r.attempt}回目）。直してもう一度提出することもできます。<button class="linkbtn" data-act="showres">結果を見る</button></p>`;
+ if(r&&!pv)h+=`<p class="banner">${esc(fmt(r.submittedAt))} に提出しました（${r.attempt}回目）。直してもう一度提出することもできます。<button class="linkbtn" data-act="showres">結果を見る</button></p>`;
  return h+[step1,step2,step3,step4][S.step-1](a);
 }
 function step1(a){
@@ -671,10 +719,10 @@ function teacherJudge(L){
 function teacherView(){
  const T=S.tData,ls=S.tLessons||[];
  const cur=ls.find(l=>l.lessonId===S.tLessonId);
- let h=`<section class="lhead"><div><p class="unit">${esc(cur?.title||'')}${cur?.note?`<span class="tag">${esc(cur.note)}</span>`:''}</p><h1>提出状況</h1></div>
+ let h=`<section class="lhead"><div><p class="unit">${esc(cur?.title||'')}${cur?.note?`<span class="tag">${esc(cur.note)}</span>`:''}</p>${srcLine(cur?.source)}<h1>提出状況</h1></div>
  <div class="tctl">${ls.length?`<label class="who">レッスン<select data-in="tlesson">${ls.map(l=>`<option value="${esc(l.lessonId)}" ${l.lessonId===S.tLessonId?'selected':''}>${esc(l.grade)} ${esc(l.title)}</option>`).join('')}</select></label>`:''}
  <button class="secondary" data-act="treload">最新にする</button></div></section>`;
- if(S.tLessons&&!ls.length)return h+`<div class="card"><p>レッスンがまだ登録されていません。スプレッドシートの Lessons シートに入れてください。</p></div>`;
+ if(S.tLessons&&!ls.length)return h+`<div class="card"><p>レッスンがまだ登録されていません。教室長画面の「レッスン登録」から入れてください。</p></div>`;
  if(!T||T.lesson.lessonId!==S.tLessonId)return h+loadingView();
  const L=T.lesson;
  const rows=T.students.map(s=>({s,r:s.latest,g:s.latest?grade(L,s.latest.answers):null}));
@@ -684,7 +732,7 @@ function teacherView(){
  const qn=subs.reduce((t,x)=>t+Object.keys(x.r.answers.q).length,0);
  h+=`<div class="stats"><div>提出<b>${subs.length} / ${rows.length}人</b></div><div>平均正答率<b>${avg}%</b></div><div>講師チェック済み<b>${chk} / ${subs.length}人</b></div><div>？の数<b>${qn}個</b></div></div>
  <div class="tw"><table class="roster"><thead><tr><th>生徒</th><th>状況</th><th>正答率（線＝70%）</th><th>意味・かたまり・品詞</th><th>？</th><th>提出回数</th><th>チェック</th></tr></thead><tbody>`;
- if(!rows.length)h+=`<tr><td colspan="7" class="muted">このレッスンの生徒がいません（Students シートの学年か、Assignments シートを確かめてください）。</td></tr>`;
+ if(!rows.length)h+=`<tr><td colspan="7" class="muted">このレッスンを配られた生徒がいません。教室長画面の「宿題の配布」で配ってください。</td></tr>`;
  rows.forEach(({s,r,g})=>{
   const st=!g?'<span class="st none">未提出</span>':r.checkedAt?'<span class="st done">チェック済み</span>':'<span class="st wait">チェック待ち</span>';
   h+=`<tr class="row ${S.tsel===s.studentId?'sel':''}" data-act="trow" data-v="${esc(s.studentId)}" tabindex="0"><td><b>${esc(s.name)}</b></td><td>${st}</td>
@@ -773,6 +821,185 @@ function detailView(L,id){
  return h+'</div>';
 }
 
+/* ===== 出典 ===== */
+const srcLine=s=>s?`<p class="src">${esc(s)}</p>`:'';
+
+/* ===== 教室長画面 ===== */
+/* レッスン JSON のまちがいを日本語で返す（gas/Code.gs の lessonErrors と同じ決まり） */
+const POS_KEYS=POS.map(p=>p.k),ROLES=ROLE_CYCLE.slice(1);
+function lessonErrors(L){
+ const err=[],add=m=>{if(err.length<30)err.push(m)};
+ if(!L||typeof L!=='object'||Array.isArray(L))return['JSON の形が正しくありません（{ } で始まる形にしてください）。'];
+ const str=v=>typeof v==='string'&&v.trim()!=='';
+ if(!str(L.lessonId)||!/^[A-Za-z0-9_-]{1,40}$/.test(L.lessonId.trim()))add('lessonId は英数字と - _ だけで、40字までにしてください。');
+ if(!str(L.title))add('title（レッスンの名前）が入っていません。');
+ if(!str(L.grade))add('grade（学年）が入っていません。');
+ if(!str(L.source))add('source（出典）が入っていません。出典がないレッスンは保存できません。');
+ if(!Array.isArray(L.sentences)||!L.sentences.length){add('sentences（文）が1つもありません。');return err}
+ L.sentences.forEach((s,si)=>{
+  const at=`文${si+1}`;
+  if(!s||!Array.isArray(s.tokens)||!s.tokens.length){add(`${at}：tokens（単語）がありません。`);return}
+  const n=s.tokens.length;
+  s.tokens.forEach((t,ti)=>{
+   const w=`${at}の${ti+1}語目`;
+   if(!t||!str(t.w)){add(`${w}：w（単語）がありません。`);return}
+   if(!POS_KEYS.includes(t.pos))add(`${w}「${t.w}」：pos「${t.pos??''}」は使えません（${POS_KEYS.join('・')}）。`);
+   if(t.alt!==undefined&&(!Array.isArray(t.alt)||t.alt.some(x=>!POS_KEYS.includes(x))))add(`${w}「${t.w}」：alt は品詞の記号の並びにしてください。`);
+  });
+  if(!Array.isArray(s.chunks)||!s.chunks.length){add(`${at}：chunks（かたまり）がありません。`);return}
+  let next=0;
+  s.chunks.forEach((c,ci)=>{
+   const k=`${at}の${ci+1}番目のかたまり`;
+   if(!c||!Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from>c.to){add(`${k}：from / to が正しくありません。`);return}
+   if(c.from!==next)add(`${k}：from が ${next} ではありません（かたまりは前から順に、すきまなく並べます）。`);
+   if(!ROLES.includes(c.role))add(`${k}：role「${c.role??''}」は使えません（${ROLES.join('・')}）。`);
+   next=c.to+1;
+  });
+  if(next!==n)add(`${at}：かたまりが最後の単語（${n-1}番）まで届いていないか、はみ出しています。`);
+ });
+ if(L.words!==undefined&&!Array.isArray(L.words))add('words は [ ] の並びにしてください。');
+ (Array.isArray(L.words)?L.words:[]).forEach((w,i)=>{
+  const k=`意味調べの${i+1}語目`;
+  if(!w||!str(w.w)){add(`${k}：w（単語）がありません。`);return}
+  if(!Number.isInteger(w.sentence)||!L.sentences[w.sentence])add(`${k}「${w.w}」：sentence は 0〜${L.sentences.length-1} の番号にしてください。`);
+  if(!Array.isArray(w.ok)||!w.ok.length||w.ok.some(x=>!str(x)))add(`${k}「${w.w}」：ok（正解にする言葉）を1つ以上入れてください。`);
+ });
+ return err;
+}
+/* 貼られた JSON を読んで確かめる。結果は S.aCheck に入れる */
+function checkLessonJson(){
+ S.aSave=null;
+ const t=S.aJson.trim();
+ if(!t){S.aCheck={errors:['JSON を貼ってください。']};return S.aCheck}
+ let L;
+ try{L=JSON.parse(t)}catch(e){S.aCheck={errors:['JSON として読めません。最初の { から最後の } まで、全部コピーできているか確かめてください。']};return S.aCheck}
+ const errors=lessonErrors(L);
+ S.aCheck=errors.length?{errors}:{lesson:L};
+ return S.aCheck;
+}
+/* 画面で使う形にする（教室長のプレビュー用。答えも入ったまま） */
+function viewLesson(L){
+ const x=clone(L);
+ x.words=Array.isArray(x.words)?x.words:[];x.source=String(x.source||'').trim();
+ x.note=[x.textbook,/^\d+$/.test(String(x.unit??''))?`Unit ${x.unit}`:x.unit,/^\d+$/.test(String(x.part??''))?`Part ${x.part}`:x.part].filter(v=>v!==undefined&&v!==null&&String(v).trim()).join(' ');
+ x.sentences.forEach(s=>{s.end=s.end||''});
+ return x;
+}
+/* レッスンの正解を、生徒の答えと同じ形にする（正解の色分け表示に使う） */
+function keyAnswers(L){
+ const a=blankA(L);
+ L.sentences.forEach((s,si)=>{
+  a.pos[si]=s.tokens.map(t=>t.pos);
+  a.bounds[si]=s.chunks.slice(0,-1).map(c=>c.to);
+  s.chunks.forEach(c=>{a.roles[si][c.from+'-'+c.to]=c.role});
+ });
+ L.words.forEach(w=>{a.meanings[w.w]=w.example||(w.ok||[])[0]||''});
+ return a;
+}
+/* プレビューでの採点（gas/Code.gs の studentResult と同じ形） */
+function localResult(L,a){
+ const g=grade(L,a);
+ const tok=L.sentences.map((s,si)=>s.tokens.map((tk,ti)=>posOk(tk,a.pos[si][ti])));
+ const grp=L.sentences.map((s,si)=>{const o={};chunksFrom(a.bounds[si],s.tokens.length).forEach(c=>{const k=c[0]+'-'+c[1],kc=s.chunks.find(x=>x.from===c[0]&&x.to===c[1]);o[k]=!!kc&&kc.role===(a.roles[si][k]||'')});return o});
+ const mean={};g.items.filter(i=>i.cat==='意味').forEach(i=>{mean[i.w]=i.ok});
+ return{rate:g.rate,cats:g.cats,marks:{tok,grp,mean}};
+}
+function openPreview(){
+ const c=checkLessonJson();if(!c.lesson)return render();
+ const L=viewLesson(c.lesson);
+ Object.assign(S,{screen:'preview',L,draft:blankA(L),sub:null,step:1,si:0,showResult:false,error:''});
+ render();window.scrollTo(0,0);
+}
+async function loadAdmin(){
+ S.screen='admin';S.error='';render();
+ try{
+  const j=await api('adminData');S.aData=j;
+  if(!j.lessons.some(l=>l.lessonId===S.aLessonId))S.aLessonId=j.lessons[0]?.lessonId||'';
+  const ids=new Set(j.students.map(s=>s.studentId));S.aSel=new Set([...S.aSel].filter(x=>ids.has(x)));
+ }catch(e){handleError(e)}
+ render();
+}
+async function loadLessonJson(id){
+ S.aBusy=true;S.error='';render();
+ try{const j=await api('getLessonJson',{lessonId:id});S.aJson=JSON.stringify(j.lesson,null,2);S.aCheck=null;S.aSave=null;window.scrollTo(0,0)}
+ catch(e){handleError(e)}
+ S.aBusy=false;render();
+}
+async function saveLesson(overwrite){
+ const c=checkLessonJson();if(!c.lesson)return render();
+ S.aBusy=true;S.error='';render();
+ try{
+  const j=await api('upsertLesson',{lesson:c.lesson,overwrite});
+  if(j.errors)S.aCheck={errors:j.errors};
+  else if(j.exists)S.aSave={exists:true,submissions:j.submissions,lessonId:c.lesson.lessonId};
+  else{S.aSave={saved:true,created:j.created,lessonId:j.lessonId};S.aLessonId=j.lessonId;S.aBusy=false;return loadAdmin()}
+ }catch(e){handleError(e)}
+ S.aBusy=false;render();
+}
+async function doAssign(on){
+ const ids=[...S.aSel];
+ if(!S.aLessonId||!ids.length){S.error='レッスンと生徒をえらんでください。';return render()}
+ if(!on&&!confirm(`えらんだ ${ids.length} 人の配布を取り消しますか？（下書きと提出は消えません）`))return;
+ S.aBusy=true;S.error='';S.aMsg='';render();
+ try{
+  const j=await api(on?'assign':'unassign',{lessonId:S.aLessonId,studentIds:ids,dueDate:S.aDue});
+  S.aMsg=on?`配りました（新しく ${j.added} 人、期限を直した人 ${j.updated} 人）。`:`${j.removed} 人の配布を取り消しました。`;
+  S.aSel=new Set();S.aBusy=false;return loadAdmin();
+ }catch(e){handleError(e)}
+ S.aBusy=false;render();
+}
+function adminView(){
+ const tab=(v,lab)=>`<button data-act="atab" data-v="${v}" aria-pressed="${S.atab===v}">${lab}</button>`;
+ let h=`<section class="lhead"><div><p class="unit">教室長</p><h1>${S.atab==='lesson'?'レッスン登録':'宿題の配布'}</h1></div>
+ <div class="tctl"><button class="secondary" data-act="areload">最新にする</button></div></section>
+ <nav class="tabs" aria-label="教室長のメニュー">${tab('lesson','レッスン登録')}${tab('assign','宿題の配布')}</nav>`;
+ if(!S.aData)return h+loadingView();
+ return h+(S.atab==='lesson'?adminLessonView():adminAssignView());
+}
+function adminLessonView(){
+ const c=S.aCheck,sv=S.aSave,dis=S.aBusy?'disabled':'';
+ let h=`<div class="card"><h2>レッスン JSON を貼る</h2>
+ <p class="muted">Claude のチャットで作ったレッスン JSON を、最初の { から最後の } まで全部貼ってください。出典（source）がないレッスンは保存できません。</p>
+ <textarea class="jsonbox" data-in="ajson" spellcheck="false" autocapitalize="off" aria-label="レッスン JSON">${esc(S.aJson)}</textarea>
+ <div class="btnrow"><button class="secondary" data-act="acheck">確かめる</button><button class="secondary" data-act="apreview">生徒の画面で見る</button><button class="primary" data-act="asave" ${dis}>${S.aBusy?'保存しています…':'保存する'}</button>${S.aJson?'<button class="linkbtn" data-act="aclear">消す</button>':''}</div>`;
+ if(c?.errors)h+=`<p class="ngc" style="margin:12px 0 0">直すところがあります（${c.errors.length}か所）</p><ul class="errlist">${c.errors.map(e=>`<li>${esc(e)}</li>`).join('')}</ul>`;
+ if(sv?.exists)h+=`<p class="banner" style="margin-top:12px">「${esc(sv.lessonId)}」はもう登録されています。${sv.submissions?`このレッスンには提出が ${sv.submissions} 件あります。文や単語の数を変えると、前の提出の見え方がずれることがあります。`:''}上書きしますか？<button class="secondary" data-act="aoverwrite" ${dis} style="margin-left:8px">上書きして保存</button></p>`;
+ if(sv?.saved)h+=`<p class="okmsg" style="margin-top:12px">「${esc(sv.lessonId)}」を${sv.created?'登録':'上書き'}しました。「宿題の配布」で生徒に配ってください。</p>`;
+ h+='</div>';
+ if(c?.lesson){
+  const L=viewLesson(c.lesson),k=keyAnswers(L),J=teacherJudge(L);
+  h+=`<div class="card"><h2>確かめた結果：問題なし</h2>
+  <p class="unit">${esc(L.title)}${L.note?`<span class="tag">${esc(L.note)}</span>`:''}</p>${srcLine(L.source)}
+  <p class="muted">${esc(L.lessonId)}・${esc(L.grade)}・${L.sentences.length}文・意味調べ ${L.words.length}語</p></div>
+  <details class="card" open><summary>正解を色分けで見る（講師にだけ見える内容）</summary>${L.sentences.map((x,si)=>`<div class="sno" style="margin-top:12px">文 ${si+1}</div>${reviewLine(L,si,k,J)}`).join('')}
+  ${L.words.length?`<table class="mlist" style="margin-top:12px">${L.words.map(w=>`<tr><td class="en">${esc(w.w)}</td><td>${esc(k.meanings[w.w])}</td><td class="muted">正解にする言葉：${esc((w.ok||[]).join('、'))}</td></tr>`).join('')}</table>`:''}</details>`;
+ }
+ const ls=S.aData.lessons;
+ h+=`<div class="card"><h2>登録ずみのレッスン（${ls.length}件）</h2>${ls.length?ls.map(l=>`<div class="lrow"><div><b>${esc(l.title)}</b>${srcLine(l.source)||'<p class="src ngc">出典がありません（生徒に出せません）</p>'}<span class="muted">${esc(l.lessonId)}・${esc(l.grade)}・提出 ${l.submissions}件${l.updatedAt?`・${esc(fmt(l.updatedAt))} 更新`:''}</span></div><button class="secondary" data-act="aload" data-v="${esc(l.lessonId)}" ${dis}>読みこんで直す</button></div>`).join(''):'<p class="muted">まだありません。</p>'}</div>`;
+ return h;
+}
+function adminAssignView(){
+ const D=S.aData,dis=S.aBusy?'disabled':'';
+ if(!D.lessons.length)return `<div class="card"><p>先に「レッスン登録」でレッスンを入れてください。</p></div>`;
+ const asg=new Map(D.assignments.filter(a=>a.lessonId===S.aLessonId).map(a=>[a.studentId,a]));
+ const cur=D.lessons.find(l=>l.lessonId===S.aLessonId);
+ let h=`<div class="card"><label class="field">レッスン<select data-in="alesson">${D.lessons.map(l=>`<option value="${esc(l.lessonId)}" ${l.lessonId===S.aLessonId?'selected':''}>${esc(l.grade)} ${esc(l.title)}</option>`).join('')}</select></label>
+ ${cur?srcLine(cur.source):''}
+ <label class="field">期限（なくてもOK）<input type="date" data-in="adue" value="${esc(S.aDue)}"></label>
+ <p class="muted">配ったレッスンだけが、生徒の宿題の一覧に出ます。もう配った生徒にもう一度配ると、期限だけが新しくなります。</p></div>`;
+ if(S.aMsg)h+=`<p class="okmsg">${esc(S.aMsg)}</p>`;
+ const grades=[...new Set(D.students.map(s=>s.grade))].sort();
+ h+=`<div class="card"><h2>生徒をえらぶ（${S.aSel.size}人えらんでいます）</h2>`;
+ if(!D.students.length)h+='<p class="muted">Students シートに生徒がいません。</p>';
+ grades.forEach(g=>{
+  const list=D.students.filter(s=>s.grade===g);
+  h+=`<div class="sgrade"><h3>${esc(g||'学年なし')}</h3><button class="linkbtn" data-act="agrade" data-v="${esc(g)}" data-on="1">全員えらぶ</button><button class="linkbtn" data-act="agrade" data-v="${esc(g)}" data-on="0">えらぶのをやめる</button></div>`;
+  h+=list.map(s=>{const a=asg.get(s.studentId);return `<label class="stu"><input type="checkbox" data-in="asel" value="${esc(s.studentId)}" ${S.aSel.has(s.studentId)?'checked':''}><span class="nm">${esc(s.studentId)}　${esc(s.name)}</span>${a?`<span class="st done">配布ずみ${a.dueDate?`（期限 ${esc(fmtDate(a.dueDate))}）`:''}</span>`:''}${s.hasPin?'':'<span class="st wait">PIN なし</span>'}</label>`}).join('');
+ });
+ h+=`<div class="btnrow"><button class="primary" data-act="aassign" ${dis}>${S.aBusy?'送っています…':'えらんだ生徒に配る'}</button><button class="secondary" data-act="aunassign" ${dis}>えらんだ生徒の配布を取り消す</button></div></div>`;
+ return h;
+}
+
 /* ===== 操作 ===== */
 document.addEventListener('click',e=>{
  const el=e.target.closest('[data-act]');if(!el||el.disabled)return;
@@ -800,6 +1027,18 @@ document.addEventListener('click',e=>{
  else if(act==='check'){setCheck(el.dataset.v,true);return}
  else if(act==='uncheck'){setCheck(el.dataset.v,false);return}
  else if(act==='treload'){loadTeacher();return}
+ else if(act==='atab'){S.atab=el.dataset.v;S.aMsg=''}
+ else if(act==='areload'){loadAdmin();return}
+ else if(act==='acheck'){checkLessonJson()}
+ else if(act==='apreview'){openPreview();return}
+ else if(act==='asave'){saveLesson(false);return}
+ else if(act==='aoverwrite'){saveLesson(true);return}
+ else if(act==='aload'){loadLessonJson(el.dataset.v);return}
+ else if(act==='aclear'){S.aJson='';S.aCheck=null;S.aSave=null}
+ else if(act==='pvback'){S.screen='admin';S.L=null;S.draft=null;S.sub=null;window.scrollTo(0,0)}
+ else if(act==='agrade'){const on=el.dataset.on==='1';(S.aData?.students||[]).filter(x=>x.grade===el.dataset.v).forEach(x=>on?S.aSel.add(x.studentId):S.aSel.delete(x.studentId))}
+ else if(act==='aassign'){doAssign(true);return}
+ else if(act==='aunassign'){doAssign(false);return}
  else return;
  render();
 });
@@ -807,19 +1046,23 @@ document.addEventListener('submit',e=>{
  const f=e.target.closest('[data-submit]');if(!f)return;
  e.preventDefault();if(S.busy)return;
  const k=f.dataset.submit;
- if(k==='code')enterCode();else if(k==='student')loginStudent();else if(k==='teacher')loginTeacher();
+ if(k==='code')enterCode();else doLogin(k);
 });
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('tr[data-act]')){S.tsel=e.target.dataset.v;render()}});
 document.addEventListener('input',e=>{
  const el=e.target,k=el.dataset.in;if(!k)return;
  if(k==='meaning'){S.draft.meanings[el.dataset.w]=el.value;markDirty()}
  else if(k==='memo'){S.draft.memo=el.value;markDirty()}
+ else if(k==='ajson'){S.aJson=el.value;S.aCheck=null;S.aSave=null}
  else if(k in S.form){S.form[k]=el.value}
 });
 document.addEventListener('change',e=>{
  const el=e.target,k=el.dataset.in;
  if(k==='tlesson'){S.tLessonId=el.value;S.tsel='';S.tData=null;saveLogin();loadTeacher()}
- else if(k==='sid'||k==='tname'){S.form[k]=el.value}
+ else if(k==='tname'){S.form[k]=el.value}
+ else if(k==='alesson'){S.aLessonId=el.value;S.aSel=new Set();render()}
+ else if(k==='adue'){S.aDue=el.value}
+ else if(k==='asel'){el.checked?S.aSel.add(el.value):S.aSel.delete(el.value);render()}
 });
 window.addEventListener('pagehide',beaconFlush);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')beaconFlush()});

@@ -1,8 +1,8 @@
 /*
- * 本文分析ノート 動作確認スクリプト（v1 用）
+ * 本文分析ノート 動作確認スクリプト（v2 用）
  *
  * 使い方
- *   1. Chrome で index.html を開き、ログインする（生徒でも講師でもよい）。
+ *   1. Chrome で index.html を開き、ログインする（生徒・講師・教室長のどれでもよい）。
  *   2. キーボードの F12 を押す（Mac は ⌘ + ⌥ + I）。右か下に「開発者ツール」が出る。
  *   3. 開発者ツールの上のほうにある「Console（コンソール）」を押す。
  *   4. このファイルの中身を全部コピーして、コンソールの一番下の「>」の所に貼り、Enter を押す。
@@ -12,11 +12,14 @@
  * 何を確かめるか
  *   ・index.html とサーバー（GAS）の版がそろっているか
  *   ・通信にかかる時間（ミリ秒。1000 ミリ秒 = 1 秒）
+ *   ・まちがった PIN・講師パスワード・管理パスワードではログインできないか
+ *   ・ログインしていない人や、ちがう立場の人にはデータを返さないか
  *   ・生徒用の通信に答え（pos / alt / role / chunks / ok / why / example）が入っていないか
- *   ・まちがった合言葉では講師用のデータがもらえないか
+ *   ・レッスンに出典（source）が入っているか
  *   ・画面を描きかえる速さ
+ *   ※ まちがったログインを数回ためします。同じ人を何回も続けてためすと、10分ログインできなくなることがあります。
  *
- * おまけ（テスト用の生徒でだけ使う。提出が2回ふえます）
+ * おまけ（テスト用の生徒でだけ使う。提出が3回ふえます）
  *   生徒でログインしてレッスンを開いた状態で、コンソールに  HC_CHECK.concurrent()  と打って Enter。
  *   同時に2回提出して、どちらも欠けずに保存されるかを確かめます。
  */
@@ -42,36 +45,53 @@
     });
     return found;
   };
-  const expectFail = async (p, code) => {
-    try { await p; } catch (e) { if (!code || e.code === code) return '正しくことわられた'; throw new Error('ちがう理由で失敗：' + e.message); }
+  const expectFail = async (p, codes) => {
+    try { await p; } catch (e) { if (!codes || codes.includes(e.code)) return '正しくことわられた'; throw new Error('ちがう理由で失敗：' + e.message); }
     throw new Error('ことわられなかった');
   };
+  const wrong = () => 'wrong-' + Date.now();
+  const role = S.auth?.role;
 
   await step('サーバーとの通信（ping）', async () => {
     const j = await HC.api('ping');
     if (j.version !== HC.VERSION) throw new Error(`版がちがう：画面 v${HC.VERSION} / サーバー v${j.version}。GAS を再デプロイしてください。`);
     return `v${j.version}`;
   });
-  await step('ログイン（教室コード）', async () => { const j = await HC.api('login'); return `生徒 ${j.students.length}人・講師 ${j.teachers.length}人`; });
-  await step('まちがった教室コードはことわる', () => expectFail(HC.api('login', { classCode: 'wrong-' + Date.now() }), 'class'));
-  await step('まちがった合言葉では答えをもらえない', () => expectFail(HC.api('listLessons', { teacherPass: 'wrong-' + Date.now() }), 'teacher'));
+  await step('教室コードの確認', async () => { const j = await HC.api('listTeachers'); return `講師 ${j.teachers.length}人`; });
+  await step('まちがった教室コードはことわる', () => expectFail(HC.api('listTeachers', { classCode: wrong() }), ['class']));
+  await step('まちがった講師パスワードはことわる', async () => {
+    const j = await HC.api('listTeachers');
+    if (!j.teachers.length) return '講師がいないので、とばした';
+    return expectFail(HC.api('login', { role: 'teacher', teacherName: j.teachers[0], password: wrong() }), ['login', 'locked']);
+  });
+  await step('まちがった管理パスワードはことわる', () => expectFail(HC.api('login', { role: 'admin', password: wrong() }), ['login', 'locked']));
+  await step('ログインしていないと生徒のデータはもらえない', () => expectFail(HC.api('listAssignments', { token: '' }), ['auth']));
+  await step('ログインしていないと答えはもらえない', () => expectFail(HC.api('listLessons', { token: '' }), ['auth']));
+  await step('ログインしていないと教室長の操作はできない', () => expectFail(HC.api('adminData', { token: '' }), ['auth']));
 
-  if (S.auth?.role === 'student') {
+  if (role === 'student') {
+    await step('まちがった PIN はことわる', () => expectFail(HC.api('login', { role: 'student', studentId: 'no-such-' + Date.now(), pin: '0000' }), ['login', 'locked']));
+    await step('生徒の通行証では答えをもらえない', () => expectFail(HC.api('listLessons'), ['auth']));
+    await step('生徒の通行証では教室長の操作はできない', () => expectFail(HC.api('adminData'), ['auth']));
     let lessonId = S.L?.lessonId;
     await step('宿題の一覧', async () => {
-      const j = await HC.api('listAssignments', { studentId: S.auth.studentId });
+      const j = await HC.api('listAssignments');
       lessonId = lessonId || j.lessons[0]?.lessonId;
-      return `${j.lessons.length}件`;
+      const noSrc = j.lessons.filter(l => !l.source);
+      if (noSrc.length) throw new Error('出典がないレッスン：' + noSrc.map(l => l.lessonId).join(', '));
+      return `${j.lessons.length}件・どれも出典あり`;
     });
     if (lessonId) {
       await step('レッスンを開く', async () => {
-        const j = await HC.api('getLessonForStudent', { studentId: S.auth.studentId, lessonId });
+        const j = await HC.api('getLessonForStudent', { lessonId });
         const bad = findKeys(j.lesson, 'lesson').concat(findKeys(j.latest?.result || {}, 'result'));
         if (bad.length) throw new Error('答えが入っている：' + bad.slice(0, 5).join(', '));
-        return `${j.lesson.sentences.length}文・答えは入っていない`;
+        if (!j.lesson.source) throw new Error('出典が入っていない');
+        return `${j.lesson.sentences.length}文・答えは入っていない・出典あり`;
       });
     }
-  } else if (S.auth?.role === 'teacher') {
+  } else if (role === 'teacher') {
+    await step('講師の通行証では教室長の操作はできない', () => expectFail(HC.api('adminData'), ['auth']));
     await step('レッスンの一覧（講師）', async () => { const j = await HC.api('listLessons'); return `${j.lessons.length}件`; });
     if (S.tLessonId) {
       await step('提出の一覧（講師）', async () => {
@@ -79,6 +99,18 @@
         return `${j.students.length}人・提出 ${j.students.filter(s => s.latest).length}人`;
       });
     }
+  } else if (role === 'admin') {
+    await step('教室長のデータ', async () => {
+      const j = await HC.api('adminData');
+      const noSrc = j.lessons.filter(l => !l.source);
+      if (noSrc.length) throw new Error('出典がないレッスン：' + noSrc.map(l => l.lessonId).join(', '));
+      return `レッスン ${j.lessons.length}件・生徒 ${j.students.length}人・配布 ${j.assignments.length}件`;
+    });
+    await step('出典がないレッスンは保存できない', async () => {
+      const j = await HC.api('upsertLesson', { lesson: { lessonId: 'CHECK-NOSOURCE', grade: '中1', title: 'check', source: '', sentences: [{ tokens: [{ w: 'Hi', pos: '名' }], chunks: [{ from: 0, to: 0, role: 'S' }] }] } });
+      if (j.saved) throw new Error('保存されてしまった（Lessons シートの CHECK-NOSOURCE の行を消してください）');
+      return 'ことわられた';
+    });
   } else {
     rows.push({ 項目: 'ログイン後の確認', 結果: 'とばした', ミリ秒: 0, メモ: 'ログインしてからもう一度実行すると、もっと確かめられます' });
   }
@@ -99,19 +131,20 @@
     /* 同時に2回提出して、どちらも保存されるか確かめる（テスト用の生徒で使う） */
     async concurrent() {
       if (S.auth?.role !== 'student' || !S.L) { console.error('生徒でログインして、レッスンを開いてから実行してください。'); return; }
-      const base = { studentId: S.auth.studentId, lessonId: S.L.lessonId, answers: S.draft };
+      const base = { lessonId: S.L.lessonId, answers: S.draft };
       const id = () => 'chk-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
-      const before = (await HC.api('listAssignments', { studentId: S.auth.studentId })).lessons.find(l => l.lessonId === S.L.lessonId)?.attempts || 0;
+      const count = async () => (await HC.api('listAssignments')).lessons.find(l => l.lessonId === S.L.lessonId)?.attempts || 0;
+      const before = await count();
       const t0 = performance.now();
       const res = await Promise.all([HC.api('submit', { ...base, submissionId: id() }), HC.api('submit', { ...base, submissionId: id() })]);
       const ms = Math.round(performance.now() - t0);
-      const after = (await HC.api('listAssignments', { studentId: S.auth.studentId })).lessons.find(l => l.lessonId === S.L.lessonId)?.attempts || 0;
+      const after = await count();
       const attempts = res.map(r => r.attempt).sort((a, b) => a - b);
       const ok = after === before + 2 && attempts[0] !== attempts[1];
       console.table([{ 前の提出回数: before, 後の提出回数: after, 今回の回数: attempts.join(' と '), ミリ秒: ms, 結果: ok ? 'OK（どちらも保存された）' : 'NG' }]);
       const dupId = id();
       const d = await Promise.all([HC.api('submit', { ...base, submissionId: dupId }), HC.api('submit', { ...base, submissionId: dupId })]);
-      const after2 = (await HC.api('listAssignments', { studentId: S.auth.studentId })).lessons.find(l => l.lessonId === S.L.lessonId)?.attempts || 0;
+      const after2 = await count();
       console.table([{ 確かめたこと: '同じ提出が2回届いたとき', 増えた回数: after2 - after, 結果: after2 - after === 1 && d[0].attempt === d[1].attempt ? 'OK（1回分だけ保存）' : 'NG' }]);
     }
   };

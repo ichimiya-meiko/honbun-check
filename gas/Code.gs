@@ -1,14 +1,16 @@
 /**
  * 本文分析ノート（honbun-check） GAS バックエンド
- * v1（フェーズ1）
+ * v2（フェーズ2）
  *
  * ・すべて doPost で JSON を受け取り、action で分ける。
- * ・答え（pos / alt / chunks / role / ok / why / example）は講師用の操作でしか返さない。
+ * ・答え（pos / alt / chunks / role / ok / why / example）は講師・教室長の操作でしか返さない。
  * ・採点はここで行い、生徒には「どこが ✗ か」だけを返す。
  * ・書き込みは LockService で順番待ちにする。提出は submissionId で重複を除く。
+ * ・ログインすると「通行証（token）」を返す。生徒の PIN・講師と教室長のパスワードが合わない限り、データは返さない。
+ * ・パスワードは Settings にハッシュ（SHA-256）で置く。平文で書かれていたら、次に使うときにハッシュにして平文を消す。
  */
 
-const VERSION = 1;
+const VERSION = 2;
 const TZ = 'Asia/Tokyo';
 
 const SHEETS = {
@@ -23,6 +25,12 @@ const SHEETS = {
 
 const POS_KEYS = ['名', '代', '動', '助', '形', '副', '前', '接', '冠'];
 const ROLES = ['S', 'V', 'O', 'C', '修飾', 'つなぎ'];
+
+/* 通行証の有効期間（ミリ秒） */
+const TOKEN_LIFE = { student: 180 * 864e5, teacher: 30 * 864e5, admin: 12 * 36e5 };
+/* まちがいが続いたら、しばらくログインできなくする */
+const FAIL_LIMIT = 5;
+const FAIL_WAIT_SEC = 600;
 
 /* ===== 入口 ===== */
 
@@ -46,24 +54,31 @@ function doPost(e) {
   }
 }
 
+/* role：その操作に必要な通行証。なし＝教室コードだけでよい */
 const ACTIONS = {
   ping: { open: true, fn: () => ({ version: VERSION }) },
+  listTeachers: { fn: () => ({ version: VERSION, teachers: activeTeachers() }) },
   login: { fn: login },
-  listAssignments: { fn: listAssignments },
-  getLessonForStudent: { fn: getLessonForStudent },
-  saveDraft: { fn: saveDraft },
-  submit: { fn: submit },
-  listLessons: { teacher: true, fn: listLessons },
-  listSubmissions: { teacher: true, fn: listSubmissions },
-  check: { teacher: true, fn: check },
-  uncheck: { teacher: true, fn: uncheck }
+  listAssignments: { role: 'student', fn: listAssignments },
+  getLessonForStudent: { role: 'student', fn: getLessonForStudent },
+  saveDraft: { role: 'student', fn: saveDraft },
+  submit: { role: 'student', fn: submit },
+  listLessons: { role: 'teacher', fn: listLessons },
+  listSubmissions: { role: 'teacher', fn: listSubmissions },
+  check: { role: 'teacher', fn: check },
+  uncheck: { role: 'teacher', fn: uncheck },
+  adminData: { role: 'admin', fn: adminData },
+  getLessonJson: { role: 'admin', fn: getLessonJson },
+  upsertLesson: { role: 'admin', fn: upsertLesson },
+  assign: { role: 'admin', fn: assign },
+  unassign: { role: 'admin', fn: unassign }
 };
 
 function route(req) {
   const a = ACTIONS[req && req.action];
   if (!a) throw userError('知らない操作です。');
-  if (!a.open) checkSetting('classCode', req.classCode, 'class', '教室コードがちがいます。');
-  if (a.teacher) checkSetting('teacherPass', req.teacherPass, 'teacher', '講師用の合言葉がちがいます。');
+  if (!a.open) checkClassCode(req.classCode);
+  if (a.role) req.who = verifyToken(req.token, a.role);
   return Object.assign({ status: 'ok' }, a.fn(req));
 }
 
@@ -78,13 +93,128 @@ function userError(msg, code) {
   return e;
 }
 
-function checkSetting(key, given, code, msg) {
-  const want = getSetting(key);
-  if (!want) throw userError(`Settings シートに ${key} が入っていません。`, code);
+function checkClassCode(given) {
+  const want = getSetting('classCode');
+  if (!want) throw userError('Settings シートに classCode が入っていません。', 'class');
   if (String(given || '').trim() !== want) {
     Utilities.sleep(400); // 総当たりを遅くする
-    throw userError(msg, code);
+    throw userError('教室コードがちがいます。', 'class');
   }
+}
+
+/* ===== パスワード・PIN・通行証 ===== */
+
+function hex(bytes) {
+  return bytes.map(b => ('0' + (b & 0xff).toString(16)).slice(-2)).join('');
+}
+
+function sha256(s) {
+  return hex(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, s, Utilities.Charset.UTF_8));
+}
+
+function makeHash(pass) {
+  const salt = Utilities.getUuid().replace(/-/g, '');
+  return 'sha256$' + salt + '$' + sha256(salt + ':' + pass);
+}
+
+function hashMatches(stored, pass) {
+  const m = /^sha256\$([0-9a-f]+)\$([0-9a-f]{64})$/.exec(String(stored || ''));
+  return !!m && sha256(m[1] + ':' + pass) === m[2];
+}
+
+/**
+ * teacherPass / adminPass のハッシュを返す。
+ * Settings に平文（teacherPass / adminPass）が書かれていたら、ハッシュにして ○○Hash に入れ、平文は消す。
+ */
+function passHash(name) {
+  const plain = getSetting(name);
+  if (plain) {
+    withLock(() => {
+      const list = rows('Settings');
+      const p = list.find(x => x.key.trim() === name);
+      if (!p || !p.value.trim()) return;
+      const h = list.find(x => x.key.trim() === name + 'Hash');
+      const val = makeHash(p.value.trim());
+      if (h) updateObj('Settings', h, { value: val });
+      else appendObj('Settings', { key: name + 'Hash', value: val });
+      updateObj('Settings', p, { value: '' });
+    });
+  }
+  return getSetting(name + 'Hash');
+}
+
+function normPin(v) {
+  const s = String(v === undefined || v === null ? '' : v).trim();
+  return /^\d{1,4}$/.test(s) ? ('000' + s).slice(-4) : s;
+}
+
+function failKey(role, id) {
+  return 'fail:' + role + ':' + sha256(String(id)).slice(0, 32);
+}
+
+function assertNotLocked(role, id) {
+  const n = Number(CacheService.getScriptCache().get(failKey(role, id)) || 0);
+  if (n >= FAIL_LIMIT) throw userError('何回もまちがえたので、10分たってからもう一度ためしてください。', 'locked');
+}
+
+function addFail(role, id, msg) {
+  const c = CacheService.getScriptCache(), k = failKey(role, id);
+  c.put(k, String(Number(c.get(k) || 0) + 1), FAIL_WAIT_SEC);
+  Utilities.sleep(600);
+  throw userError(msg, 'login');
+}
+
+function tokenSecret() {
+  const p = PropertiesService.getScriptProperties();
+  let s = p.getProperty('tokenSecret');
+  if (!s) {
+    s = Utilities.getUuid() + Utilities.getUuid();
+    p.setProperty('tokenSecret', s);
+  }
+  return s;
+}
+
+function b64(s) {
+  return Utilities.base64EncodeWebSafe(s, Utilities.Charset.UTF_8).replace(/=+$/, '');
+}
+
+function unb64(s) {
+  const pad = '===='.slice(0, (4 - s.length % 4) % 4);
+  return Utilities.newBlob(Utilities.base64DecodeWebSafe(s + pad)).getDataAsString('UTF-8');
+}
+
+/** 通行証のしるし。PIN・パスワード・教室コードが変わると、前の通行証は使えなくなる。 */
+function sign(body, fingerprint) {
+  const key = tokenSecret();
+  const msg = body + '|' + fingerprint + '|' + getSetting('classCode');
+  return hex(Utilities.computeHmacSha256Signature(msg, key, Utilities.Charset.UTF_8));
+}
+
+function fingerprintOf(role, id) {
+  if (role === 'student') {
+    const r = rows('Students').find(s => s.studentId.trim() === id && isActive(s.active));
+    return r ? 'pin:' + normPin(r.pin) : '';
+  }
+  if (role === 'teacher') return activeTeachers().indexOf(id) >= 0 ? passHash('teacherPass') : '';
+  if (role === 'admin') return passHash('adminPass');
+  return '';
+}
+
+function makeToken(role, id) {
+  const body = b64(JSON.stringify({ r: role, id: id, t: Date.now() }));
+  return body + '.' + sign(body, fingerprintOf(role, id));
+}
+
+function verifyToken(token, role) {
+  const bad = () => userError('ログインの期限が切れました。もう一度ログインしてください。', 'auth');
+  const m = /^([A-Za-z0-9_-]+)\.([0-9a-f]{64})$/.exec(String(token || ''));
+  if (!m) throw bad();
+  let p;
+  try { p = JSON.parse(unb64(m[1])); } catch (e) { throw bad(); }
+  if (!p || p.r !== role || !TOKEN_LIFE[role] || Date.now() - Number(p.t) > TOKEN_LIFE[role]) throw bad();
+  const fp = fingerprintOf(role, String(p.id));
+  if (!fp || sign(m[1], fp) !== m[2]) throw bad();
+  return { role, id: String(p.id) };
 }
 
 /* ===== シートの読み書き ===== */
@@ -183,12 +313,27 @@ function activeStudents() {
 
 function findStudent(id) {
   const st = activeStudents().find(s => s.studentId === String(id || '').trim());
-  if (!st) throw userError('生徒が見つかりません。もう一度ログインしてください。', 'student');
+  if (!st) throw userError('生徒が見つかりません。もう一度ログインしてください。', 'auth');
   return st;
 }
 
 function activeTeachers() {
   return rows('Teachers').filter(t => t.name.trim() && isActive(t.active)).map(t => t.name.trim());
+}
+
+/** 「4」→「Unit 4」のように、数字だけなら名前を付ける */
+function unitLabel(v, word) {
+  const s = String(v === undefined || v === null ? '' : v).trim();
+  return /^\d+$/.test(s) ? word + ' ' + s : s;
+}
+
+function noteOf(r) {
+  return [r.textbook, r.unit, r.part].map(x => String(x || '').trim()).filter(Boolean).join(' ');
+}
+
+function sourceOf(r) {
+  const L = parseJson(r.json, null);
+  return L && typeof L.source === 'string' ? L.source.trim() : '';
 }
 
 function loadLesson(lessonId) {
@@ -200,7 +345,8 @@ function loadLesson(lessonId) {
   L.lessonId = id;
   L.title = L.title || r.title || id;
   L.grade = L.grade || r.grade.trim();
-  L.note = L.note || [r.textbook, r.unit, r.part].filter(Boolean).join(' ');
+  L.note = noteOf(r);
+  L.source = typeof L.source === 'string' ? L.source.trim() : '';
   L.words = Array.isArray(L.words) ? L.words : [];
   L.sentences.forEach(s => {
     s.tokens = Array.isArray(s.tokens) ? s.tokens : [];
@@ -210,10 +356,15 @@ function loadLesson(lessonId) {
   return L;
 }
 
+/** 出典がないレッスンは、生徒にも講師にも出さない */
+function assertSource(L) {
+  if (!L.source) throw userError(`レッスン ${L.lessonId} に出典（source）が入っていません。教室長に伝えてください。`);
+}
+
 /** 生徒に送る形。答え（pos / alt / chunks / ok / why / example）を削る。 */
 function publicLesson(L) {
   return {
-    lessonId: L.lessonId, title: L.title, note: L.note || '', grade: L.grade || '',
+    lessonId: L.lessonId, title: L.title, note: L.note || '', grade: L.grade || '', source: L.source,
     sentences: L.sentences.map(s => ({
       tokens: s.tokens.map(t => (t.glue ? { w: t.w, glue: true } : { w: t.w })),
       end: s.end
@@ -222,17 +373,13 @@ function publicLesson(L) {
   };
 }
 
-/** その生徒に配られたレッスン。Assignments に1行もなければ同じ学年のレッスン全部。 */
+/** その生徒に配られたレッスン（Assignments シートにある分だけ） */
 function lessonsForStudent(st) {
   const lessons = rows('Lessons').filter(r => r.lessonId.trim());
-  const asg = rows('Assignments').filter(a => a.studentId.trim() === st.studentId);
-  if (asg.length) {
-    return asg.map(a => {
-      const l = lessons.find(r => r.lessonId.trim() === a.lessonId.trim());
-      return l ? { row: l, dueDate: a.dueDate } : null;
-    }).filter(Boolean);
-  }
-  return lessons.filter(r => r.grade.trim() === st.grade).map(r => ({ row: r, dueDate: '' }));
+  return rows('Assignments').filter(a => a.studentId.trim() === st.studentId).map(a => {
+    const l = lessons.find(r => r.lessonId.trim() === a.lessonId.trim());
+    return l ? { row: l, dueDate: a.dueDate } : null;
+  }).filter(Boolean);
 }
 
 function assertAssigned(st, lessonId) {
@@ -241,17 +388,59 @@ function assertAssigned(st, lessonId) {
   }
 }
 
-/** その講師画面に出す生徒。Assignments にあればその生徒、なければ同じ学年の生徒。 */
+/** その講師画面に出す生徒（そのレッスンを配られた生徒） */
 function studentsForLesson(L) {
-  const all = activeStudents();
   const ids = rows('Assignments').filter(a => a.lessonId.trim() === L.lessonId).map(a => a.studentId.trim());
-  if (ids.length) return all.filter(s => ids.indexOf(s.studentId) >= 0);
-  return all.filter(s => s.grade === L.grade);
+  return activeStudents().filter(s => ids.indexOf(s.studentId) >= 0);
 }
 
 function submissionsOf(studentId, lessonId) {
   return rows('Submissions').filter(r => r.studentId.trim() === studentId && r.lessonId.trim() === lessonId)
     .sort((a, b) => Number(a.attempt) - Number(b.attempt));
+}
+
+/* ===== レッスン JSON の確認 ===== */
+
+/** まちがいを日本語の文の配列で返す。空なら OK。 */
+function lessonErrors(L) {
+  const err = [];
+  const add = m => { if (err.length < 30) err.push(m); };
+  if (!L || typeof L !== 'object' || Array.isArray(L)) return ['JSON の形が正しくありません（{ } で始まる形にしてください）。'];
+  const str = v => typeof v === 'string' && v.trim() !== '';
+  if (!str(L.lessonId) || !/^[A-Za-z0-9_-]{1,40}$/.test(L.lessonId.trim())) add('lessonId は英数字と - _ だけで、40字までにしてください。');
+  if (!str(L.title)) add('title（レッスンの名前）が入っていません。');
+  if (!str(L.grade)) add('grade（学年）が入っていません。');
+  if (!str(L.source)) add('source（出典）が入っていません。出典がないレッスンは保存できません。');
+  if (!Array.isArray(L.sentences) || !L.sentences.length) { add('sentences（文）が1つもありません。'); return err; }
+  L.sentences.forEach((s, si) => {
+    const at = `文${si + 1}`;
+    if (!s || !Array.isArray(s.tokens) || !s.tokens.length) { add(`${at}：tokens（単語）がありません。`); return; }
+    const n = s.tokens.length;
+    s.tokens.forEach((t, ti) => {
+      const w = `${at}の${ti + 1}語目`;
+      if (!t || !str(t.w)) { add(`${w}：w（単語）がありません。`); return; }
+      if (POS_KEYS.indexOf(t.pos) < 0) add(`${w}「${t.w}」：pos「${t.pos === undefined ? '' : t.pos}」は使えません（${POS_KEYS.join('・')}）。`);
+      if (t.alt !== undefined && (!Array.isArray(t.alt) || t.alt.some(x => POS_KEYS.indexOf(x) < 0))) add(`${w}「${t.w}」：alt は品詞の記号の並びにしてください。`);
+    });
+    if (!Array.isArray(s.chunks) || !s.chunks.length) { add(`${at}：chunks（かたまり）がありません。`); return; }
+    let next = 0;
+    s.chunks.forEach((c, ci) => {
+      const k = `${at}の${ci + 1}番目のかたまり`;
+      if (!c || !Number.isInteger(c.from) || !Number.isInteger(c.to) || c.from > c.to) { add(`${k}：from / to が正しくありません。`); return; }
+      if (c.from !== next) add(`${k}：from が ${next} ではありません（かたまりは前から順に、すきまなく並べます）。`);
+      if (ROLES.indexOf(c.role) < 0) add(`${k}：role「${c.role === undefined ? '' : c.role}」は使えません（${ROLES.join('・')}）。`);
+      next = c.to + 1;
+    });
+    if (next !== n) add(`${at}：かたまりが最後の単語（${n - 1}番）まで届いていないか、はみ出しています。`);
+  });
+  if (L.words !== undefined && !Array.isArray(L.words)) add('words は [ ] の並びにしてください。');
+  (Array.isArray(L.words) ? L.words : []).forEach((w, i) => {
+    const k = `意味調べの${i + 1}語目`;
+    if (!w || !str(w.w)) { add(`${k}：w（単語）がありません。`); return; }
+    if (!Number.isInteger(w.sentence) || !L.sentences[w.sentence]) add(`${k}「${w.w}」：sentence は 0〜${L.sentences.length - 1} の番号にしてください。`);
+    if (!Array.isArray(w.ok) || !w.ok.length || w.ok.some(x => !str(x))) add(`${k}「${w.w}」：ok（正解にする言葉）を1つ以上入れてください。`);
+  });
+  return err;
 }
 
 /* ===== 採点 ===== */
@@ -335,16 +524,43 @@ function studentResult(L, a) {
   return { rate: g.rate, cats: g.cats, marks: { tok, grp, mean } };
 }
 
-/* ===== 操作：共通 ===== */
+/* ===== 操作：ログイン ===== */
 
-function login() {
-  return { version: VERSION, students: activeStudents(), teachers: activeTeachers() };
+function login(req) {
+  const role = req.role;
+  if (role === 'student') {
+    const id = String(req.studentId || '').trim();
+    const pin = String(req.pin || '').trim();
+    if (!id || !/^\d{4}$/.test(pin)) throw userError('生徒番号と、4けたの PIN を入れてください。', 'login');
+    assertNotLocked('student', id);
+    const r = rows('Students').find(s => s.studentId.trim() === id && isActive(s.active));
+    if (r && !String(r.pin).trim()) throw userError('PIN がまだ決まっていません。先生に伝えてください。', 'login');
+    if (!r || normPin(r.pin) !== pin) addFail('student', id, '生徒番号か PIN がちがいます。');
+    return { version: VERSION, token: makeToken('student', id), studentId: id, name: r.name, grade: r.grade.trim() };
+  }
+  if (role === 'teacher') {
+    const name = String(req.teacherName || '').trim();
+    if (activeTeachers().indexOf(name) < 0) throw userError('講師の名前が見つかりません。', 'login');
+    const h = passHash('teacherPass');
+    if (!h) throw userError('Settings シートに teacherPass が入っていません。', 'login');
+    assertNotLocked('teacher', name);
+    if (!hashMatches(h, String(req.password || '').trim())) addFail('teacher', name, '講師パスワードがちがいます。');
+    return { version: VERSION, token: makeToken('teacher', name), teacherName: name };
+  }
+  if (role === 'admin') {
+    const h = passHash('adminPass');
+    if (!h) throw userError('Settings シートに adminPass が入っていません。', 'login');
+    assertNotLocked('admin', 'admin');
+    if (!hashMatches(h, String(req.password || '').trim())) addFail('admin', 'admin', '管理パスワードがちがいます。');
+    return { version: VERSION, token: makeToken('admin', 'admin') };
+  }
+  throw userError('知らないログインです。');
 }
 
-/* ===== 操作：生徒 ===== */
+/* ===== 操作：生徒（PIN の通行証が必要） ===== */
 
 function listAssignments(req) {
-  const st = findStudent(req.studentId);
+  const st = findStudent(req.who.id);
   const subs = rows('Submissions').filter(r => r.studentId.trim() === st.studentId);
   const drafts = rows('Drafts').filter(r => r.studentId.trim() === st.studentId);
   const lessons = lessonsForStudent(st).map(({ row, dueDate }) => {
@@ -354,7 +570,8 @@ function listAssignments(req) {
     return {
       lessonId: id,
       title: row.title || id,
-      note: [row.textbook, row.unit, row.part].filter(Boolean).join(' '),
+      note: noteOf(row),
+      source: sourceOf(row),
       dueDate: dueDate,
       hasDraft: drafts.some(d => d.lessonId.trim() === id),
       attempts: last ? Number(last.attempt) : 0,
@@ -366,9 +583,10 @@ function listAssignments(req) {
 }
 
 function getLessonForStudent(req) {
-  const st = findStudent(req.studentId);
+  const st = findStudent(req.who.id);
   assertAssigned(st, req.lessonId);
   const L = loadLesson(req.lessonId);
+  assertSource(L);
   const d = rows('Drafts').find(r => r.studentId.trim() === st.studentId && r.lessonId.trim() === L.lessonId);
   const subs = submissionsOf(st.studentId, L.lessonId);
   const last = subs[subs.length - 1];
@@ -394,7 +612,7 @@ function upsertDraft(studentId, lessonId, answers) {
 }
 
 function saveDraft(req) {
-  const st = findStudent(req.studentId);
+  const st = findStudent(req.who.id);
   assertAssigned(st, req.lessonId);
   const L = loadLesson(req.lessonId);
   const a = normalize(L, req.answers);
@@ -403,7 +621,7 @@ function saveDraft(req) {
 }
 
 function submit(req) {
-  const st = findStudent(req.studentId);
+  const st = findStudent(req.who.id);
   assertAssigned(st, req.lessonId);
   const id = String(req.submissionId || '');
   if (!/^[A-Za-z0-9-]{8,64}$/.test(id)) throw userError('提出の番号が正しくありません。');
@@ -429,18 +647,22 @@ function submit(req) {
   });
 }
 
-/* ===== 操作：講師（合言葉が必要） ===== */
+/* ===== 操作：講師（講師パスワードの通行証が必要） ===== */
+
+function lessonSummaries() {
+  return rows('Lessons').filter(r => r.lessonId.trim()).map(r => ({
+    lessonId: r.lessonId.trim(), grade: r.grade.trim(), title: r.title || r.lessonId.trim(),
+    note: noteOf(r), source: sourceOf(r), updatedAt: r.updatedAt
+  }));
+}
 
 function listLessons() {
-  const lessons = rows('Lessons').filter(r => r.lessonId.trim()).map(r => ({
-    lessonId: r.lessonId.trim(), grade: r.grade.trim(), title: r.title || r.lessonId.trim(),
-    note: [r.textbook, r.unit, r.part].filter(Boolean).join(' ')
-  }));
-  return { lessons, teachers: activeTeachers() };
+  return { lessons: lessonSummaries(), teachers: activeTeachers() };
 }
 
 function listSubmissions(req) {
   const L = loadLesson(req.lessonId);
+  assertSource(L);
   const subs = rows('Submissions').filter(r => r.lessonId.trim() === L.lessonId);
   const drafts = rows('Drafts').filter(r => r.lessonId.trim() === L.lessonId);
   const students = studentsForLesson(L).map(s => {
@@ -460,11 +682,7 @@ function listSubmissions(req) {
 
 function setCheck(req, on) {
   const id = String(req.submissionId || '');
-  let name = '';
-  if (on) {
-    name = String(req.teacherName || '').trim();
-    if (activeTeachers().indexOf(name) < 0) throw userError('講師の名前が見つかりません。');
-  }
+  const name = on ? req.who.id : '';
   return withLock(() => {
     const r = rows('Submissions').find(x => x.submissionId === id);
     if (!r) throw userError('この提出が見つかりません。画面を最新にしてください。');
@@ -477,7 +695,100 @@ function setCheck(req, on) {
 function check(req) { return setCheck(req, true); }
 function uncheck(req) { return setCheck(req, false); }
 
-/* ===== 最初に1回だけ実行する：シートの準備 ===== */
+/* ===== 操作：教室長（管理パスワードの通行証が必要） ===== */
+
+function adminData() {
+  const subs = rows('Submissions');
+  const lessons = lessonSummaries().map(l => Object.assign(l, {
+    submissions: subs.filter(s => s.lessonId.trim() === l.lessonId).length
+  }));
+  const students = rows('Students').filter(s => s.studentId.trim() && isActive(s.active)).map(s => ({
+    studentId: s.studentId.trim(), name: s.name, grade: s.grade.trim(), hasPin: /^\d{4}$/.test(normPin(s.pin))
+  }));
+  const assignments = rows('Assignments').filter(a => a.lessonId.trim() && a.studentId.trim()).map(a => ({
+    lessonId: a.lessonId.trim(), studentId: a.studentId.trim(), dueDate: a.dueDate
+  }));
+  return { lessons, students, assignments, loadedAt: stamp() };
+}
+
+function getLessonJson(req) {
+  const id = String(req.lessonId || '').trim();
+  const r = rows('Lessons').find(x => x.lessonId.trim() === id);
+  if (!r) throw userError('このレッスンが見つかりません。');
+  const L = parseJson(r.json, null);
+  if (!L) throw userError(`レッスン ${id} の json が正しくありません。`);
+  ['textbook', 'unit', 'part'].forEach(k => { if (L[k] === undefined && r[k]) L[k] = r[k]; });
+  return { lesson: L };
+}
+
+function upsertLesson(req) {
+  const L = req.lesson;
+  const errors = lessonErrors(L);
+  if (errors.length) return { saved: false, errors };
+  L.lessonId = L.lessonId.trim();
+  L.source = L.source.trim();
+  const json = JSON.stringify(L);
+  if (json.length > 45000) return { saved: false, errors: ['レッスンが長すぎます（スプレッドシートの1マスに入りません）。2つのレッスンに分けてください。'] };
+  return withLock(() => {
+    const r = rows('Lessons').find(x => x.lessonId.trim() === L.lessonId);
+    const submissions = rows('Submissions').filter(s => s.lessonId.trim() === L.lessonId).length;
+    if (r && !req.overwrite) return { saved: false, exists: true, submissions };
+    const obj = {
+      lessonId: L.lessonId, grade: String(L.grade).trim(),
+      textbook: String(L.textbook || '').trim(), unit: unitLabel(L.unit, 'Unit'), part: unitLabel(L.part, 'Part'),
+      title: String(L.title).trim(), json, updatedAt: stamp()
+    };
+    if (r) updateObj('Lessons', r, obj);
+    else appendObj('Lessons', obj);
+    return { saved: true, created: !r, lessonId: L.lessonId, updatedAt: obj.updatedAt };
+  });
+}
+
+function dueOf(v) {
+  const s = String(v || '').trim();
+  if (!s) return '';
+  const m = /^(\d{4})[-\/](\d{1,2})[-\/](\d{1,2})$/.exec(s);
+  if (!m) throw userError('期限の日付が正しくありません。');
+  return `${m[1]}/${('0' + m[2]).slice(-2)}/${('0' + m[3]).slice(-2)}`;
+}
+
+function assignTargets(req) {
+  const id = String(req.lessonId || '').trim();
+  if (!rows('Lessons').some(r => r.lessonId.trim() === id)) throw userError('このレッスンが見つかりません。');
+  const all = activeStudents().map(s => s.studentId);
+  const ids = (Array.isArray(req.studentIds) ? req.studentIds : []).map(x => String(x).trim()).filter(x => all.indexOf(x) >= 0);
+  if (!ids.length) throw userError('生徒を1人以上えらんでください。');
+  return { id, ids: ids.filter((x, i) => ids.indexOf(x) === i) };
+}
+
+function assign(req) {
+  const { id, ids } = assignTargets(req);
+  const due = dueOf(req.dueDate);
+  return withLock(() => {
+    const now = rows('Assignments').filter(a => a.lessonId.trim() === id);
+    let added = 0, updated = 0;
+    ids.forEach(sid => {
+      const r = now.find(a => a.studentId.trim() === sid);
+      if (r) { updateObj('Assignments', r, { dueDate: due }); updated++; }
+      else { appendObj('Assignments', { assignmentId: Utilities.getUuid(), lessonId: id, studentId: sid, dueDate: due, createdAt: stamp() }); added++; }
+    });
+    return { added, updated };
+  });
+}
+
+/** 配布を取り消す（Assignments の行を消す。下書きと提出は消さない） */
+function unassign(req) {
+  const { id, ids } = assignTargets(req);
+  return withLock(() => {
+    const s = sheet('Assignments');
+    const del = rows('Assignments').filter(a => a.lessonId.trim() === id && ids.indexOf(a.studentId.trim()) >= 0)
+      .map(a => a._row).sort((x, y) => y - x);
+    del.forEach(r => s.deleteRow(r));
+    return { removed: del.length };
+  });
+}
+
+/* ===== 最初に1回だけ実行する：シートの準備（v1 から上げるときも、もう一度実行する） ===== */
 
 function setup() {
   const ss = SpreadsheetApp.getActive();
@@ -496,24 +807,28 @@ function setup() {
     if (s && s.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(s);
   });
 
-  if (rows('Settings').length === 0) {
-    appendObj('Settings', { key: 'classCode', value: 'kyoshitsu-test' });
-    appendObj('Settings', { key: 'teacherPass', value: 'sensei-test' });
-  }
+  // Settings：ない項目だけ足す（すでに入っている値は変えない）
+  // adminPass は、このプログラムが誰でも見られる所にあるので、見本の値を入れない（教室長が自分で打つ）
+  const have = rows('Settings').map(r => r.key.trim());
+  [['classCode', 'kyoshitsu-test'], ['teacherPass', 'sensei-test'], ['adminPass', '']].forEach(([k, v]) => {
+    if (have.indexOf(k) < 0 && have.indexOf(k + 'Hash') < 0) appendObj('Settings', { key: k, value: v });
+  });
   if (rows('Students').length === 0) {
-    [['T01', 'テスト 生徒A'], ['T02', 'テスト 生徒B'], ['T03', 'テスト 生徒C']].forEach(([id, name]) =>
-      appendObj('Students', { studentId: id, name, grade: '中1', pin: '', active: 'TRUE' }));
+    [['T01', 'テスト 生徒A', '1111'], ['T02', 'テスト 生徒B', '2222'], ['T03', 'テスト 生徒C', '3333']].forEach(([id, name, pin]) =>
+      appendObj('Students', { studentId: id, name, grade: '中1', pin, active: 'TRUE' }));
   }
   if (rows('Teachers').length === 0) {
     appendObj('Teachers', { teacherId: 'K01', name: 'テスト先生', active: 'TRUE' });
   }
-  if (!rows('Lessons').some(r => r.lessonId.trim() === TEST_LESSON.lessonId)) {
-    appendObj('Lessons', {
-      lessonId: TEST_LESSON.lessonId, grade: TEST_LESSON.grade, textbook: 'テスト用（自作の英文）', unit: '', part: '',
-      title: TEST_LESSON.title, json: JSON.stringify(TEST_LESSON), updatedAt: stamp()
-    });
-  }
-  console.log('準備ができました。Settings シートの classCode と teacherPass を書きかえてください。');
+  // テスト用レッスンは、いつも最新の形（出典つき）に入れかえる
+  const t = rows('Lessons').find(r => r.lessonId.trim() === TEST_LESSON.lessonId);
+  const tObj = {
+    lessonId: TEST_LESSON.lessonId, grade: TEST_LESSON.grade, textbook: 'テスト用（自作の英文）', unit: '', part: '',
+    title: TEST_LESSON.title, json: JSON.stringify(TEST_LESSON), updatedAt: stamp()
+  };
+  if (t) updateObj('Lessons', t, tObj);
+  else appendObj('Lessons', tObj);
+  console.log('準備ができました。Settings シートの classCode と teacherPass を書きかえ、adminPass に管理パスワードを打ってください。');
 }
 
 /* テスト用レッスン。教科書ではない自作の英文。 */
@@ -521,6 +836,7 @@ const TEST_LESSON = {
   lessonId: 'TEST-1',
   grade: '中1',
   title: 'テスト用　ぼくの犬',
+  source: '出典：自作の英文（テスト用）',
   sentences: [
     {
       tokens: [{ w: 'I', pos: '代' }, { w: 'have', pos: '動' }, { w: 'a', pos: '冠' }, { w: 'dog', pos: '名' }],
