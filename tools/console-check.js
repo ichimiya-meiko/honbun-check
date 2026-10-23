@@ -1,5 +1,5 @@
 /*
- * 本文分析ノート 動作確認スクリプト（v2 用）
+ * 本文分析ノート 動作確認スクリプト（v3 用）
  *
  * 使い方
  *   1. Chrome で index.html を開き、ログインする（生徒・講師・教室長のどれでもよい）。
@@ -16,6 +16,7 @@
  *   ・ログインしていない人や、ちがう立場の人にはデータを返さないか
  *   ・生徒用の通信に答え（pos / alt / role / chunks / ok / why / example）が入っていないか
  *   ・レッスンに出典（source）が入っているか
+ *   ・（教室長）まとめて保存するとき、まちがいが1つでもあれば何も保存されないか
  *   ・画面を描きかえる速さ
  *   ※ まちがったログインを数回ためします。同じ人を何回も続けてためすと、10分ログインできなくなることがあります。
  *
@@ -107,9 +108,17 @@
       return `レッスン ${j.lessons.length}件・生徒 ${j.students.length}人・配布 ${j.assignments.length}件`;
     });
     await step('出典がないレッスンは保存できない', async () => {
-      const j = await HC.api('upsertLesson', { lesson: { lessonId: 'CHECK-NOSOURCE', grade: '中1', title: 'check', source: '', sentences: [{ tokens: [{ w: 'Hi', pos: '名' }], chunks: [{ from: 0, to: 0, role: 'S' }] }] } });
+      const j = await HC.api('upsertLesson', { lesson: { lessonId: 'CHECK-NOSOURCE', grade: '中1', title: 'check', source: '', posSet: ['名'], roleSet: ['S'], sentences: [{ tokens: [{ w: 'Hi', pos: '名' }], chunks: [{ from: 0, to: 0, role: 'S' }] }] } });
       if (j.saved) throw new Error('保存されてしまった（Lessons シートの CHECK-NOSOURCE の行を消してください）');
       return 'ことわられた';
+    });
+    await step('まとめて保存：1つでもまちがいがあれば何も保存しない', async () => {
+      const ok = { lessonId: 'CHECK-BATCH-OK', grade: '中1', title: 'check', source: 'check', posSet: ['間', '動', 'その他'], roleSet: ['S', 'V', 'その他'], sentences: [{ speaker: 'A', tokens: [{ w: 'Oh', pos: '間', punct: ',' }, { w: 'I', pos: 'その他' }, { w: 'want to', pos: '動' }], end: '!', chunks: [{ from: 0, to: 0, role: 'その他' }, { from: 1, to: 1, role: 'S' }, { from: 2, to: 2, role: 'V' }] }] };
+      const bad = JSON.parse(JSON.stringify(ok)); bad.lessonId = 'CHECK-BATCH-NG'; bad.sentences[0].end = ';';
+      const j = await HC.api('upsertLessons', { lessons: [ok, bad] });
+      if (j.saved) throw new Error('保存されてしまった（Lessons シートの CHECK-BATCH-OK と CHECK-BATCH-NG の行を消してください）');
+      if (!j.errors || j.errors.length !== 1 || j.errors[0].lessonId !== 'CHECK-BATCH-NG') throw new Error('まちがいの知らせ方がおかしい：' + JSON.stringify(j.errors));
+      return '1つ目（posSet・roleSet・カンマ・話し手・スペース入りの単語）は OK、2つ目のまちがいだけ知らせて、どちらも保存しなかった';
     });
   } else {
     rows.push({ 項目: 'ログイン後の確認', 結果: 'とばした', ミリ秒: 0, メモ: 'ログインしてからもう一度実行すると、もっと確かめられます' });

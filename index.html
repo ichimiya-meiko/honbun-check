@@ -12,8 +12,8 @@
   --bg:#EDF1F5; --paper:#FFFFFF; --ink:#1C2740; --sub:#5A6680; --line:#CDD5E1; --focus:#2F6FDB;
   --ok:#1F8A5B; --ng:#D33A3A; --soft:#F5F7FA; --warn:#B26A00;
   --p-noun:#2F6FDB; --p-pron:#7A5AF8; --p-verb:#E0464B; --p-aux:#E8710A; --p-adj:#23955F;
-  --p-adv:#B58900; --p-prep:#0E93A0; --p-conj:#D6409F; --p-art:#7D8494;
-  --r-S:#2F6FDB; --r-V:#E0464B; --r-O:#23955F; --r-C:#B58900; --r-M:#7D8494;
+  --p-adv:#B58900; --p-prep:#0E93A0; --p-conj:#D6409F; --p-art:#7D8494; --p-intj:#8B5E3C; --p-inf:#5E7D1E; --p-wh:#1E3A8A; --p-ger:#9F1239; --p-etc:#52525B;
+  --r-S:#2F6FDB; --r-V:#E0464B; --r-O:#23955F; --r-C:#B58900; --r-M:#7D8494; --r-etc:#52525B;
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark){
@@ -21,8 +21,8 @@
     --bg:#111722; --paper:#1A2230; --ink:#E6EBF3; --sub:#9AA6BC; --line:#334058; --focus:#7FA8F5;
     --ok:#4CC38A; --ng:#FF6B6B; --soft:#202A3A; --warn:#E3A33B;
     --p-noun:#6E9BF2; --p-pron:#A58BFF; --p-verb:#FF6B6E; --p-aux:#FF9A3D; --p-adj:#4CC38A;
-    --p-adv:#E3B83B; --p-prep:#3CC3CF; --p-conj:#F06BBE; --p-art:#A3AAB8;
-    --r-S:#6E9BF2; --r-V:#FF6B6E; --r-O:#4CC38A; --r-C:#E3B83B; --r-M:#A3AAB8;
+    --p-adv:#E3B83B; --p-prep:#3CC3CF; --p-conj:#F06BBE; --p-art:#A3AAB8; --p-intj:#D2A47C; --p-inf:#A8CB5E; --p-wh:#A5B8FF; --p-ger:#FF8FA8; --p-etc:#C4C4CC;
+    --r-S:#6E9BF2; --r-V:#FF6B6E; --r-O:#4CC38A; --r-C:#E3B83B; --r-M:#A3AAB8; --r-etc:#8E8E99;
     color-scheme: dark;
   }
 }
@@ -30,8 +30,8 @@
   --bg:#111722; --paper:#1A2230; --ink:#E6EBF3; --sub:#9AA6BC; --line:#334058; --focus:#7FA8F5;
   --ok:#4CC38A; --ng:#FF6B6B; --soft:#202A3A; --warn:#E3A33B;
   --p-noun:#6E9BF2; --p-pron:#A58BFF; --p-verb:#FF6B6E; --p-aux:#FF9A3D; --p-adj:#4CC38A;
-  --p-adv:#E3B83B; --p-prep:#3CC3CF; --p-conj:#F06BBE; --p-art:#A3AAB8;
-  --r-S:#6E9BF2; --r-V:#FF6B6E; --r-O:#4CC38A; --r-C:#E3B83B; --r-M:#A3AAB8;
+  --p-adv:#E3B83B; --p-prep:#3CC3CF; --p-conj:#F06BBE; --p-art:#A3AAB8; --p-intj:#D2A47C; --p-inf:#A8CB5E; --p-wh:#A5B8FF; --p-ger:#FF8FA8; --p-etc:#C4C4CC;
+  --r-S:#6E9BF2; --r-V:#FF6B6E; --r-O:#4CC38A; --r-C:#E3B83B; --r-M:#A3AAB8; --r-etc:#8E8E99;
   color-scheme: dark;
 }
 :root{box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
@@ -90,7 +90,7 @@ select,input[type=text],input[type=password],textarea{background:var(--paper);bo
 .line{display:flex;flex-wrap:wrap;align-items:flex-start;row-gap:16px;column-gap:0}
 .chunk{display:inline-flex;flex-direction:column;align-items:center}
 .cw{display:flex;align-items:stretch;border:2px solid var(--ink);border-top:0;border-radius:0 0 10px 10px;padding:0 6px 2px;min-height:44px}
-.w{font-size:1.35rem;padding:4px 2px;align-self:center}
+.w{font-size:1.35rem;padding:4px 2px;align-self:center;white-space:nowrap}
 .gap{width:20px;min-height:44px;border:0;background:none;padding:0;position:relative}
 .gap::after{content:"";position:absolute;left:50%;top:50%;width:6px;height:6px;margin:-3px;border-radius:50%;background:var(--line)}
 .gap:hover::after{background:var(--focus)}
@@ -98,7 +98,7 @@ select,input[type=text],input[type=password],textarea{background:var(--paper);bo
 .gap.on::after{width:2px;height:70%;margin:0 0 0 -1px;top:15%;border-radius:1px;background:var(--focus)}
 .role{margin-top:6px;border:1.5px dashed var(--sub);background:var(--paper);border-radius:999px;padding:1px 12px;font-size:.85rem;min-width:56px;min-height:40px;font-weight:700;color:var(--sub)}
 .role.set,.role.static{border-style:solid;color:#fff;border-color:transparent}
-.role[data-r="S"]{background:var(--r-S)}.role[data-r="V"]{background:var(--r-V)}.role[data-r="O"]{background:var(--r-O)}.role[data-r="C"]{background:var(--r-C)}.role[data-r="修飾"]{background:var(--r-M)}.role[data-r="つなぎ"]{background:var(--p-conj)}
+.role[data-r="S"]{background:var(--r-S)}.role[data-r="V"]{background:var(--r-V)}.role[data-r="O"]{background:var(--r-O)}.role[data-r="C"]{background:var(--r-C)}.role[data-r="修飾"]{background:var(--r-M)}.role[data-r="つなぎ"]{background:var(--p-conj)}.role[data-r="その他"]{background:var(--r-etc)}
 .role.static[data-r=""]{background:var(--soft);color:var(--sub);border:1.5px dashed var(--sub)}
 .dot{color:var(--ink);font-size:1.35rem;align-self:flex-start;padding-top:6px;font-family:"Literata",serif}
 
@@ -112,7 +112,7 @@ select,input[type=text],input[type=password],textarea{background:var(--paper);bo
 .wline{display:flex;flex-wrap:wrap;gap:6px 4px;align-items:flex-end}
 .wd{position:relative;display:inline-flex;flex-direction:column;align-items:center;border:0;background:none;padding:4px 6px 2px;border-bottom:5px solid var(--c);border-radius:6px 6px 0 0;min-width:44px}
 .wd.has{background:color-mix(in srgb,var(--c) 14%,transparent)}
-.wd .en{font-size:1.35rem;line-height:1.3}
+.wd .en{font-size:1.35rem;line-height:1.3;white-space:nowrap}
 .wd.gl{margin-left:-3px}
 .wd .pl{font-size:.72rem;color:var(--c);font-weight:700;min-height:1.1em;white-space:nowrap}
 .wd:not(.has) .pl{color:var(--sub)}
@@ -263,28 +263,42 @@ button[disabled]{opacity:.5;cursor:default}
 .stu{display:flex;align-items:center;gap:10px;min-height:44px;padding:2px 4px;border-bottom:1px solid var(--line);cursor:pointer}
 .stu input{width:22px;height:22px;flex:none}
 .stu .nm{flex:1}
+.spk{font-size:.8rem;color:var(--sub);font-weight:700;margin:0 0 2px;font-family:"Zen Maru Gothic",sans-serif}
+.spk-in{font-family:"Zen Maru Gothic",sans-serif;font-size:.78em;color:var(--sub);font-weight:700;margin-right:6px}
+.wline .pn,.wline .end{align-self:flex-start;padding-top:4px;font-family:"Literata",serif;font-size:1.35rem;line-height:1.3}
+.wline .pn,.wline .end{margin-left:-7px}
+.card.big .wline .pn,.card.big .wline .end{font-size:1.65rem;padding-top:6px}
+.card.big .wline .pn,.card.big .wline .end{margin-left:-10px}
+.batch{border-top:1px solid var(--line);padding:10px 0}
+.batch:first-of-type{border-top:0}
 .pvbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
 </style>
 </head>
 <body>
 <header><div class="hin">
-  <div class="brand">本文分析ノート<small>v2</small></div>
+  <div class="brand">本文分析ノート<small>v3</small></div>
   <div class="hright" id="hright"></div>
 </div></header>
 <main id="main"></main>
 
 <script>
 /* ===== 設定 ===== */
-const VERSION=2;
+const VERSION=3;
 /* ↓ GAS を「ウェブアプリ」として公開したときの URL を ' ' の間に貼る（docs/setup.md 手順7） */
 const API_URL='https://script.google.com/macros/s/AKfycbxUiT8hdHzK3Ol4ZKZJT1hFNnyWGQolkUCGVA3amXMKUl_dXqweX0BrD6XMpVfs9Q_j/exec';
 
 const POS=[
  {k:'名',name:'名詞',v:'--p-noun'},{k:'代',name:'代名詞',v:'--p-pron'},{k:'動',name:'動詞',v:'--p-verb'},
- {k:'助',name:'助動詞',v:'--p-aux'},{k:'形',name:'形容詞',v:'--p-adj'},{k:'副',name:'副詞',v:'--p-adv'},
- {k:'前',name:'前置詞',v:'--p-prep'},{k:'接',name:'接続詞',v:'--p-conj'},{k:'冠',name:'冠詞',v:'--p-art'}
+ {k:'助',name:'助動詞',v:'--p-aux'},{k:'冠',name:'冠詞',v:'--p-art'},{k:'疑',name:'疑問詞',v:'--p-wh'},
+ {k:'動名',name:'動名詞',v:'--p-ger'},{k:'不',name:'不定詞',v:'--p-inf'},{k:'形',name:'形容詞',v:'--p-adj'},
+ {k:'副',name:'副詞',v:'--p-adv'},{k:'前',name:'前置詞',v:'--p-prep'},{k:'接',name:'接続詞',v:'--p-conj'},
+ {k:'間',name:'間投詞',v:'--p-intj'},{k:'その他',name:'その他',v:'--p-etc'}
 ];
-const ROLE_CYCLE=['','S','V','O','C','修飾','つなぎ'];
+const ROLE_CYCLE=['','S','V','O','C','修飾','その他'];
+const ROLE_LEGEND={'S':['--r-S','主語「〜は」'],'V':['--r-V','動詞「〜する」'],'O':['--r-O','目的語「〜を」'],'C':['--r-C','Sの説明'],'修飾':['--r-M','くわしくする部分'],'その他':['--r-etc','それ以外の部分'],'つなぎ':['--p-conj','but など']};
+/* そのレッスンで使う品詞・役割（posSet / roleSet）。v2 までのレッスンには無いので、そのときは全部 */
+const posSetOf=L=>Array.isArray(L?.posSet)&&L.posSet.length?POS.filter(p=>L.posSet.includes(p.k)):POS;
+const roleSetOf=L=>Array.isArray(L?.roleSet)&&L.roleSet.length?L.roleSet:ROLE_CYCLE.slice(1);
 /* 講師用：品詞・役割ごとの共通の理由と聞き方（レッスンに why がないときに使う） */
 const POS_WHY={
  '名':{why:'人・物・場所・時などの名前を表す語。',ask:'「これは何かの名前？」と聞く'},
@@ -295,10 +309,15 @@ const POS_WHY={
  '副':{why:'動詞・形容詞・他の副詞をくわしくする語。名詞はくわしくしない。',ask:'「この語がくわしくしているのは名詞？それ以外？」と聞く'},
  '前':{why:'名詞の前に置いて、場所・時・関係を表す語。後ろの名詞とセットでかたまりを作る。',ask:'「後ろにどんな名詞が続いている？」と聞く'},
  '接':{why:'語と語、文と文をつなぐ語（and, but など）。',ask:'「何と何をつないでいる？」と聞く'},
- '冠':{why:'a / an / the の3語だけが冠詞。名詞の前に付いて「1つの」「その」を表す。',ask:'「冠詞の仲間は何語ある？」と聞く'}
+ '冠':{why:'a / an / the の3語だけが冠詞。名詞の前に付いて「1つの」「その」を表す。',ask:'「冠詞の仲間は何語ある？」と聞く'},
+ '間':{why:'oh, wow, yes, hi など、気持ちや返事・あいさつを表す語。文の他の語とは結びつかない。',ask:'「この語がなくても、文の意味は伝わる？」と聞く'},
+ '疑':{why:'what, who, where, how など、たずねるときに使う語。ふつう文の最初に来る。',ask:'「この文は何をたずねている？どの語でたずねている？」と聞く'},
+ '動名':{why:'動詞に -ing を付けて「〜すること」の意味にし、名詞のように使う形。',ask:'「この -ing は『〜している』？それとも『〜すること』？」と聞く'},
+ '不':{why:'「to＋動詞の原形」の形。「〜すること」「〜するために」などの意味になる。前置詞の to とちがい、すぐ後ろに動詞が来る。',ask:'「to のすぐ後ろは名詞？動詞？」と聞く'},
+ 'その他':{why:'このレッスンで使う品詞のどれにもあてはまらない語。',ask:'「ボタンにある品詞のどれかにあてはまる？」と聞く'}
 };
-const ROLE_WHY={'S':'「〜は・〜が」にあたる主語。','V':'動作や状態を表す動詞。','O':'動詞のあとで「〜を・〜に」にあたる目的語。','C':'Sの様子や正体を説明する補語。S＝C が成り立つ。','修飾':'時・場所・様子などをくわしくする部分。なくても文は成り立つ。','つなぎ':'文と文、語と語をつなぐ部分（and, but など）。'};
-const ROLE_ASK={'S':'「この文は誰（何）の話？」と聞く','V':'「動作や状態を表す語はどれ？」と聞く','O':'「動詞のあとに『何を？』と聞くと、答えはどこ？」と聞く','C':'「S＝この部分、と言える？」と聞く','修飾':'「このかたまりがなくても文は成り立つ？」と聞く','つなぎ':'「この語は前の文とどうつながっている？」と聞く'};
+const ROLE_WHY={'S':'「〜は・〜が」にあたる主語。','V':'動作や状態を表す動詞。','O':'動詞のあとで「〜を・〜に」にあたる目的語。','C':'Sの様子や正体を説明する補語。S＝C が成り立つ。','修飾':'時・場所・様子などをくわしくする部分。なくても文は成り立つ。','つなぎ':'文と文、語と語をつなぐ部分（and, but など）。','その他':'このレッスンで使う役割（S・V など）のどれにもあてはまらない部分。'};
+const ROLE_ASK={'S':'「この文は誰（何）の話？」と聞く','V':'「動作や状態を表す語はどれ？」と聞く','O':'「動詞のあとに『何を？』と聞くと、答えはどこ？」と聞く','C':'「S＝この部分、と言える？」と聞く','修飾':'「このかたまりがなくても文は成り立つ？」と聞く','つなぎ':'「この語は前の文とどうつながっている？」と聞く','その他':'「この部分は S？V？それともどちらでもない？」と聞く'};
 
 /* ===== 小さな道具 ===== */
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -307,7 +326,11 @@ const posOf=k=>POS.find(p=>p.k===k);
 const posName=k=>posOf(k)?.name||'';
 const posVar=k=>posOf(k)?`var(${posOf(k).v})`:'var(--line)';
 const posOk=(tk,v)=>!!v&&(v===tk.pos||(tk.alt||[]).includes(v));
-const jt=toks=>toks.map((t,i)=>(i&&!t.glue?' ':'')+t.w).join('');
+const jt=toks=>toks.map((t,i)=>(i&&!t.glue?' ':'')+t.w+(t.punct||'')).join('');
+/* 単語のすぐ後ろの記号（カンマなど）と、文の話し手 */
+const pn=t=>esc(t.punct||'');
+const spk=s=>s.speaker?`<div class="spk">${esc(s.speaker)}</div>`:'';
+const spkIn=s=>s.speaker?`<span class="spk-in">${esc(s.speaker)}</span>`:'';
 const words=(L,si,a,b)=>jt(L.sentences[si].tokens.slice(a,b+1));
 /* サーバーの日時「2026/10/20 13:05:00」→「10/20 13:05」 */
 const fmt=s=>{const m=/^(\d{4})\/(\d{1,2})\/(\d{1,2})(?:\s+(\d{1,2}):(\d{2}))?/.exec(String(s||''));if(!m)return String(s||'');return `${+m[2]}/${+m[3]}${m[4]?` ${m[4].padStart(2,'0')}:${m[5]}`:''}`};
@@ -482,7 +505,7 @@ async function openLesson(id){
   const resend=!!(local?.pending&&local.answers);
   S.draft=fitA(L,resend?local.answers:(j.draft||j.latest?.answers||null));
   S.sub=j.latest?{answers:fitA(L,j.latest.answers),result:j.latest.result,attempt:j.latest.attempt,submittedAt:j.latest.submittedAt}:null;
-  S.L=L;
+  S.L=L;S.tool=posSetOf(L)[0].k;
   if(resend)markDirty();
  }catch(e){handleError(e);if(S.auth)S.screen='list'}
  render();
@@ -603,7 +626,7 @@ function step1(a){
  let h=`<p class="guide">新しい単語の意味を調べて書こう。辞書の一番上ではなく、この文の中で合う意味を選ぶのがコツです。</p>`;
  L.words.forEach(w=>{
   const s=L.sentences[w.sentence];
-  const ctx=s?s.tokens.map((t,i)=>(i&&!t.glue?' ':'')+(t.w.toLowerCase()===w.w.toLowerCase()?`<b>${esc(t.w)}</b>`:esc(t.w))).join('')+esc(s.end):'';
+  const ctx=s?spkIn(s)+s.tokens.map((t,i)=>(i&&!t.glue?' ':'')+(t.w.toLowerCase()===w.w.toLowerCase()?`<b>${esc(t.w)}</b>`:esc(t.w))+pn(t)).join('')+esc(s.end):'';
   h+=`<div class="card mrow"><div><div class="en">${esc(w.w)}</div><p class="ctx">${ctx}</p></div>
   <input type="text" data-in="meaning" data-w="${esc(w.w)}" value="${esc(a.meanings[w.w]||'')}" placeholder="意味を書こう" aria-label="${esc(w.w)} の意味"></div>`;
  });
@@ -622,8 +645,8 @@ function pager(nextStep,label){
 function step2(a){
  const si=S.si;
  let h=`<p class="guide">① 動詞（V）を見つける → ② 「だれが？」で S を見つける → ③ 意味のかたまりごとに区切る。単語のあいだの点をタップすると区切り線が入ります。最後に下のラベルをタップして役割を選ぼう。</p>
- <div class="legend"><span><b style="background:var(--r-S)">S</b>主語「〜は」</span><span><b style="background:var(--r-V)">V</b>動詞「〜する」</span><span><b style="background:var(--r-O)">O</b>目的語「〜を」</span><span><b style="background:var(--r-C)">C</b>Sの説明</span><span><b style="background:var(--r-M)">修飾</b>くわしくする部分</span><span><b style="background:var(--p-conj)">つなぎ</b>but など</span></div>`;
- h+=sentNav('chunk',a)+`<div class="card big"><div class="sno">文 ${si+1} / ${S.L.sentences.length}</div><div class="line">${chunkLine(si,a)}</div></div>`;
+ <div class="legend">${roleSetOf(S.L).map(r=>ROLE_LEGEND[r]?`<span><b style="background:var(${ROLE_LEGEND[r][0]})">${esc(r)}</b>${ROLE_LEGEND[r][1]}</span>`:'').join('')}</div>`;
+ h+=sentNav('chunk',a)+`<div class="card big"><div class="sno">文 ${si+1} / ${S.L.sentences.length}</div>${spk(S.L.sentences[si])}<div class="line">${chunkLine(si,a)}</div></div>`;
  return h+pager(3,'次へ：品詞をつける');
 }
 function chunkLine(si,a){
@@ -632,7 +655,7 @@ function chunkLine(si,a){
   const k=c[0]+'-'+c[1],role=a.roles[si][k]||'';
   h+=`<span class="chunk"><span class="cw">`;
   for(let t=c[0];t<=c[1];t++){
-   h+=`<span class="w">${esc(s.tokens[t].w)}${t===n-1?esc(s.end):''}</span>`;
+   h+=`<span class="w">${esc(s.tokens[t].w)}${pn(s.tokens[t])}${t===n-1?esc(s.end):''}</span>`;
    if(t<c[1])h+=`<button class="gap" data-act="gap" data-s="${si}" data-g="${t}" aria-label="${esc(s.tokens[t].w)} のあとで区切る"></button>`;
   }
   h+=`</span><button class="role ${role?'set':''}" data-act="role" data-s="${si}" data-k="${k}" data-r="${role}">${role||'選ぶ'}</button></span>`;
@@ -642,12 +665,13 @@ function chunkLine(si,a){
 }
 function step3(a){
  const si=S.si,x=S.L.sentences[si];
+ if(!['?','x'].includes(S.tool)&&!posSetOf(S.L).some(p=>p.k===S.tool))S.tool=posSetOf(S.L)[0].k;
  let h=`<p class="guide">色を選んでから単語をタップ。わからない単語には「？ わからない」をつけておこう。</p>`;
- h+=`<div class="palette" role="toolbar" aria-label="品詞の選択">${POS.map(p=>`<button data-act="tool" data-v="${p.k}" aria-pressed="${S.tool===p.k}" style="--c:var(${p.v})"><i></i>${p.name}</button>`).join('')}
+ h+=`<div class="palette" role="toolbar" aria-label="品詞の選択">${posSetOf(S.L).map(p=>`<button data-act="tool" data-v="${p.k}" aria-pressed="${S.tool===p.k}" style="--c:var(${p.v})"><i></i>${p.name}</button>`).join('')}
  <button class="qt" data-act="tool" data-v="?" aria-pressed="${S.tool==='?'}">？ わからない</button><button class="xt" data-act="tool" data-v="x" aria-pressed="${S.tool==='x'}">消す</button></div>`;
  h+=sentNav('pos',a);
- h+=`<div class="card big"><div class="sno">文 ${si+1} / ${S.L.sentences.length}　<span class="muted">${a.pos[si].filter(Boolean).length} / ${x.tokens.length} 語</span></div><div class="wline">${x.tokens.map((tk,ti)=>{const p=a.pos[si][ti],q=a.q[si+'-'+ti];
-  return `<button class="wd ${p?'has':''} ${tk.glue?'gl':''}" data-act="word" data-s="${si}" data-t="${ti}" style="--c:${p?posVar(p):'var(--line)'}"><span class="en">${esc(tk.w)}</span><span class="pl">${p?posName(p):'－'}</span>${q?'<span class="qb">？</span>':''}</button>`}).join('')}<span class="end">${esc(x.end)}</span></div></div>`;
+ h+=`<div class="card big"><div class="sno">文 ${si+1} / ${S.L.sentences.length}　<span class="muted">${a.pos[si].filter(Boolean).length} / ${x.tokens.length} 語</span></div>${spk(x)}<div class="wline">${x.tokens.map((tk,ti)=>{const p=a.pos[si][ti],q=a.q[si+'-'+ti];
+  return `<button class="wd ${p?'has':''} ${tk.glue?'gl':''}" data-act="word" data-s="${si}" data-t="${ti}" style="--c:${p?posVar(p):'var(--line)'}"><span class="en">${esc(tk.w)}</span><span class="pl">${p?posName(p):'－'}</span>${q?'<span class="qb">？</span>':''}</button>${tk.punct?`<span class="pn">${pn(tk)}</span>`:''}`}).join('')}<span class="end">${esc(x.end)}</span></div></div>`;
  return h+pager(4,'次へ：提出する');
 }
 function step4(a){
@@ -677,13 +701,13 @@ function resultView(r){
 /* ===== 共通：見直し表示 ===== */
 /* J.pos(si,ti,答え) / J.chunk(si,from,to,役割) で ○✗ を決める。J.fix / J.keyline は講師だけ。 */
 function reviewLine(L,si,a,J){
- const s=L.sentences[si],n=s.tokens.length,ch=chunksFrom(a.bounds[si],n);let allOk=true,h='<div class="rv">';
+ const s=L.sentences[si],n=s.tokens.length,ch=chunksFrom(a.bounds[si],n);let allOk=true,h=spk(s)+'<div class="rv">';
  ch.forEach(c=>{
   const role=a.roles[si][c[0]+'-'+c[1]]||'',cok=J.chunk(si,c[0],c[1],role);if(!cok)allOk=false;
   h+=`<span class="chunk view ${cok?'':'bad'}"><span class="cw">`;
   for(let t=c[0];t<=c[1];t++){
    const p=a.pos[si][t],ok=J.pos(si,t,p),q=a.q[si+'-'+t];
-   h+=`<span class="wd static ${p?'has':''} ${ok?'':'bad'}" style="--c:${p?posVar(p):'var(--line)'}"><span class="en">${esc(s.tokens[t].w)}${t===n-1?esc(s.end):''}</span><span class="pl">${p?posName(p):'未'}${ok?'':J.fix?`<b class="fix">→${J.fix(si,t)}</b>`:'<b class="x">✗</b>'}</span>${q?'<span class="qb">？</span>':''}</span>`;
+   h+=`<span class="wd static ${p?'has':''} ${ok?'':'bad'}" style="--c:${p?posVar(p):'var(--line)'}"><span class="en">${esc(s.tokens[t].w)}${pn(s.tokens[t])}${t===n-1?esc(s.end):''}</span><span class="pl">${p?posName(p):'未'}${ok?'':J.fix?`<b class="fix">→${J.fix(si,t)}</b>`:'<b class="x">✗</b>'}</span>${q?'<span class="qb">？</span>':''}</span>`;
   }
   h+=`</span><span class="role static ${cok?'':'bad'}" data-r="${esc(role)}">${esc(role)||'未'}${cok?'':' ✗'}</span></span>`;
  });
@@ -796,7 +820,7 @@ function mkItem(m){
 function markedSentence(L,si,a){
  const x=L.sentences[si],ch=chunksFrom(a.bounds[si],x.tokens.length),badChunkTok=new Set();
  x.chunks.forEach(c=>{const has=ch.some(y=>y[0]===c.from&&y[1]===c.to);if(!(has&&a.roles[si][c.from+'-'+c.to]===c.role))for(let t=c.from;t<=c.to;t++)badChunkTok.add(t)});
- return `<p class="msent">${x.tokens.map((tk,ti)=>{const bp=!posOk(tk,a.pos[si][ti]);const cls=[bp?'bp':'',badChunkTok.has(ti)?'bc':''].join(' ');return `${ti&&!tk.glue?' ':''}<span class="${cls}">${esc(tk.w)}</span>`}).join('')}${esc(x.end)}</p>`;
+ return `<p class="msent">${spkIn(x)}${x.tokens.map((tk,ti)=>{const bp=!posOk(tk,a.pos[si][ti]);const cls=[bp?'bp':'',badChunkTok.has(ti)?'bc':''].join(' ');return `${ti&&!tk.glue?' ':''}<span class="${cls}">${esc(tk.w)}</span>${pn(tk)}`}).join('')}${esc(x.end)}</p>`;
 }
 function detailView(L,id){
  const st=S.tData.students.find(x=>x.studentId===id);if(!st)return '';
@@ -812,7 +836,7 @@ function detailView(L,id){
  ${a.memo?`<h2 style="margin-top:12px">生徒からの質問</h2><p class="memo">${esc(a.memo)}</p>`:''}</div>
  <h2 class="sech">まちがい一覧</h2><p class="muted" style="margin-top:-4px">赤字＝品詞のまちがい、点線＝かたまりのまちがい</p>`;
  bySent.forEach((list,si)=>{
-  if(!list.length){h+=`<div class="card okrow"><span class="sno">文 ${si+1}</span><span class="okc">まちがいなし ✓</span><span class="msent small">${esc(jt(L.sentences[si].tokens)+L.sentences[si].end)}</span></div>`;return}
+  if(!list.length){h+=`<div class="card okrow"><span class="sno">文 ${si+1}</span><span class="okc">まちがいなし ✓</span><span class="msent small">${spkIn(L.sentences[si])}${esc(jt(L.sentences[si].tokens)+L.sentences[si].end)}</span></div>`;return}
   h+=`<div class="card"><div class="sno">文 ${si+1}　<span class="ngc">${list.length}か所</span></div>${markedSentence(L,si,a)}<div class="mks">${list.map(mkItem).join('')}</div></div>`;
  });
  if(mean.length)h+=`<div class="card"><div class="sno">意味調べ　<span class="ngc">${mean.length}か所</span></div><div class="mks">${mean.map(mkItem).join('')}</div></div>`;
@@ -826,7 +850,7 @@ const srcLine=s=>s?`<p class="src">${esc(s)}</p>`:'';
 
 /* ===== 教室長画面 ===== */
 /* レッスン JSON のまちがいを日本語で返す（gas/Code.gs の lessonErrors と同じ決まり） */
-const POS_KEYS=POS.map(p=>p.k),ROLES=ROLE_CYCLE.slice(1);
+const POS_KEYS=POS.map(p=>p.k),ROLES=ROLE_CYCLE.slice(1),ENDS=['.','!','?'];
 function lessonErrors(L){
  const err=[],add=m=>{if(err.length<30)err.push(m)};
  if(!L||typeof L!=='object'||Array.isArray(L))return['JSON の形が正しくありません（{ } で始まる形にしてください）。'];
@@ -835,15 +859,23 @@ function lessonErrors(L){
  if(!str(L.title))add('title（レッスンの名前）が入っていません。');
  if(!str(L.grade))add('grade（学年）が入っていません。');
  if(!str(L.source))add('source（出典）が入っていません。出典がないレッスンは保存できません。');
+ const setOk=(v,all)=>Array.isArray(v)&&v.length&&v.every(x=>all.includes(x))&&v.every((x,i)=>v.indexOf(x)===i);
+ const posSet=setOk(L.posSet,POS_KEYS)?L.posSet:null,roleSet=setOk(L.roleSet,ROLES)?L.roleSet:null;
+ if(!posSet)add(`posSet（使う品詞の一覧）は、${POS_KEYS.join('・')} の中から重ならないように選んで [ ] に入れてください。`);
+ if(!roleSet)add(`roleSet（使うかたまりの役割の一覧）は、${ROLES.join('・')} の中から重ならないように選んで [ ] に入れてください。`);
  if(!Array.isArray(L.sentences)||!L.sentences.length){add('sentences（文）が1つもありません。');return err}
  L.sentences.forEach((s,si)=>{
   const at=`文${si+1}`;
   if(!s||!Array.isArray(s.tokens)||!s.tokens.length){add(`${at}：tokens（単語）がありません。`);return}
   const n=s.tokens.length;
+  if(!ENDS.includes(s.end))add(`${at}：end（文の最後の記号）は ${ENDS.join(' ')} のどれかにしてください。`);
+  if(s.speaker!==undefined&&(typeof s.speaker!=='string'||s.speaker.length>30))add(`${at}：speaker（話し手）は30字までの文字にしてください。`);
   s.tokens.forEach((t,ti)=>{
    const w=`${at}の${ti+1}語目`;
    if(!t||!str(t.w)){add(`${w}：w（単語）がありません。`);return}
+   if(t.punct!==undefined&&(typeof t.punct!=='string'||!/^[^\s]{1,3}$/.test(t.punct)))add(`${w}「${t.w}」：punct は「,」のような3字までの記号にしてください。`);
    if(!POS_KEYS.includes(t.pos))add(`${w}「${t.w}」：pos「${t.pos??''}」は使えません（${POS_KEYS.join('・')}）。`);
+   else if(posSet&&!posSet.includes(t.pos))add(`${w}「${t.w}」：pos「${t.pos}」が posSet に入っていません（生徒のボタンに出ないので、正解できません）。`);
    if(t.alt!==undefined&&(!Array.isArray(t.alt)||t.alt.some(x=>!POS_KEYS.includes(x))))add(`${w}「${t.w}」：alt は品詞の記号の並びにしてください。`);
   });
   if(!Array.isArray(s.chunks)||!s.chunks.length){add(`${at}：chunks（かたまり）がありません。`);return}
@@ -853,6 +885,7 @@ function lessonErrors(L){
    if(!c||!Number.isInteger(c.from)||!Number.isInteger(c.to)||c.from>c.to){add(`${k}：from / to が正しくありません。`);return}
    if(c.from!==next)add(`${k}：from が ${next} ではありません（かたまりは前から順に、すきまなく並べます）。`);
    if(!ROLES.includes(c.role))add(`${k}：role「${c.role??''}」は使えません（${ROLES.join('・')}）。`);
+   else if(roleSet&&!roleSet.includes(c.role))add(`${k}：role「${c.role}」が roleSet に入っていません（生徒のボタンに出ないので、正解できません）。`);
    next=c.to+1;
   });
   if(next!==n)add(`${at}：かたまりが最後の単語（${n-1}番）まで届いていないか、はみ出しています。`);
@@ -866,15 +899,21 @@ function lessonErrors(L){
  });
  return err;
 }
-/* 貼られた JSON を読んで確かめる。結果は S.aCheck に入れる */
+/* 貼られた JSON を読んで確かめる。1つの { } でも、[ { }, { } ] の並びでもよい。結果は S.aCheck に入れる
+   S.aCheck = {errors:[...]}（読めないとき）または {items:[{L, errors}]}、ok は全部問題なしのとき true */
 function checkLessonJson(){
  S.aSave=null;
  const t=S.aJson.trim();
  if(!t){S.aCheck={errors:['JSON を貼ってください。']};return S.aCheck}
- let L;
- try{L=JSON.parse(t)}catch(e){S.aCheck={errors:['JSON として読めません。最初の { から最後の } まで、全部コピーできているか確かめてください。']};return S.aCheck}
- const errors=lessonErrors(L);
- S.aCheck=errors.length?{errors}:{lesson:L};
+ let J;
+ try{J=JSON.parse(t)}catch(e){S.aCheck={errors:['JSON として読めません。最初の { （または [ ）から最後の } （または ] ）まで、全部コピーできているか確かめてください。']};return S.aCheck}
+ const list=Array.isArray(J)?J:[J];
+ if(!list.length){S.aCheck={errors:['[ ] の中にレッスンがありません。']};return S.aCheck}
+ if(list.length>60){S.aCheck={errors:['一度に保存できるのは60レッスンまでです。分けて貼ってください。']};return S.aCheck}
+ const items=list.map(L=>({L,errors:lessonErrors(L)}));
+ const ids=items.map(x=>typeof x.L?.lessonId==='string'?x.L.lessonId.trim():'');
+ items.forEach((x,i)=>{if(ids[i]&&ids.indexOf(ids[i])!==i)x.errors.push(`同じ lessonId「${ids[i]}」が2つ以上あります。`)});
+ S.aCheck={items,ok:items.every(x=>!x.errors.length)};
  return S.aCheck;
 }
 /* 画面で使う形にする（教室長のプレビュー用。答えも入ったまま） */
@@ -904,10 +943,11 @@ function localResult(L,a){
  const mean={};g.items.filter(i=>i.cat==='意味').forEach(i=>{mean[i.w]=i.ok});
  return{rate:g.rate,cats:g.cats,marks:{tok,grp,mean}};
 }
-function openPreview(){
- const c=checkLessonJson();if(!c.lesson)return render();
- const L=viewLesson(c.lesson);
- Object.assign(S,{screen:'preview',L,draft:blankA(L),sub:null,step:1,si:0,showResult:false,error:''});
+function openPreview(i){
+ const c=S.aCheck?.items?S.aCheck:checkLessonJson();
+ const x=c.items?.[i||0];if(!x||x.errors.length)return render();
+ const L=viewLesson(x.L);
+ Object.assign(S,{screen:'preview',L,draft:blankA(L),sub:null,step:1,si:0,showResult:false,error:'',tool:posSetOf(L)[0].k});
  render();window.scrollTo(0,0);
 }
 async function loadAdmin(){
@@ -925,14 +965,13 @@ async function loadLessonJson(id){
  catch(e){handleError(e)}
  S.aBusy=false;render();
 }
-async function saveLesson(overwrite){
- const c=checkLessonJson();if(!c.lesson)return render();
+async function saveLesson(){
+ const c=checkLessonJson();if(!c.ok)return render();
  S.aBusy=true;S.error='';render();
  try{
-  const j=await api('upsertLesson',{lesson:c.lesson,overwrite});
-  if(j.errors)S.aCheck={errors:j.errors};
-  else if(j.exists)S.aSave={exists:true,submissions:j.submissions,lessonId:c.lesson.lessonId};
-  else{S.aSave={saved:true,created:j.created,lessonId:j.lessonId};S.aLessonId=j.lessonId;S.aBusy=false;return loadAdmin()}
+  const j=await api('upsertLessons',{lessons:c.items.map(x=>x.L)});
+  if(j.errors){j.errors.forEach(e=>{const x=c.items[e.index];if(x)x.errors=e.errors});c.ok=false}
+  else{S.aSave={saved:true,created:j.created,updated:j.updated,lessonIds:j.lessonIds};S.aLessonId=j.lessonIds[0];S.aBusy=false;return loadAdmin()}
  }catch(e){handleError(e)}
  S.aBusy=false;render();
 }
@@ -958,24 +997,35 @@ function adminView(){
 }
 function adminLessonView(){
  const c=S.aCheck,sv=S.aSave,dis=S.aBusy?'disabled':'';
+ const name=(x,i)=>`${i+1}つ目${typeof x.L?.lessonId==='string'&&x.L.lessonId.trim()?`（${esc(x.L.lessonId.trim())}）`:''}`;
  let h=`<div class="card"><h2>レッスン JSON を貼る</h2>
- <p class="muted">Claude のチャットで作ったレッスン JSON を、最初の { から最後の } まで全部貼ってください。出典（source）がないレッスンは保存できません。</p>
+ <p class="muted">Claude のチャットで作ったレッスン JSON を、最初から最後まで全部貼ってください。1つのレッスン（{ } ）でも、いくつかのレッスンの並び（[ { }, { } ] ）でも大丈夫です。出典（source）がないレッスンは保存できません。同じ lessonId のレッスンがもう登録されているときは、上書きします。</p>
  <textarea class="jsonbox" data-in="ajson" spellcheck="false" autocapitalize="off" aria-label="レッスン JSON">${esc(S.aJson)}</textarea>
- <div class="btnrow"><button class="secondary" data-act="acheck">確かめる</button><button class="secondary" data-act="apreview">生徒の画面で見る</button><button class="primary" data-act="asave" ${dis}>${S.aBusy?'保存しています…':'保存する'}</button>${S.aJson?'<button class="linkbtn" data-act="aclear">消す</button>':''}</div>`;
- if(c?.errors)h+=`<p class="ngc" style="margin:12px 0 0">直すところがあります（${c.errors.length}か所）</p><ul class="errlist">${c.errors.map(e=>`<li>${esc(e)}</li>`).join('')}</ul>`;
- if(sv?.exists)h+=`<p class="banner" style="margin-top:12px">「${esc(sv.lessonId)}」はもう登録されています。${sv.submissions?`このレッスンには提出が ${sv.submissions} 件あります。文や単語の数を変えると、前の提出の見え方がずれることがあります。`:''}上書きしますか？<button class="secondary" data-act="aoverwrite" ${dis} style="margin-left:8px">上書きして保存</button></p>`;
- if(sv?.saved)h+=`<p class="okmsg" style="margin-top:12px">「${esc(sv.lessonId)}」を${sv.created?'登録':'上書き'}しました。「宿題の配布」で生徒に配ってください。</p>`;
+ <div class="btnrow"><button class="secondary" data-act="acheck">確かめる</button><button class="primary" data-act="asave" ${dis}>${S.aBusy?'保存しています…':'保存する'}</button>${S.aJson?'<button class="linkbtn" data-act="aclear">消す</button>':''}</div>`;
+ if(c?.errors)h+=`<ul class="errlist">${c.errors.map(e=>`<li>${esc(e)}</li>`).join('')}</ul>`;
+ if(c?.items&&!c.ok){
+  const bad=c.items.map((x,i)=>({x,i})).filter(o=>o.x.errors.length);
+  h+=`<p class="ngc" style="margin:12px 0 0">直すところがあります（${c.items.length}レッスンのうち ${bad.length}レッスン）。全部直るまで保存できません。</p>`;
+  h+=bad.map(({x,i})=>`<div class="batch"><b>${name(x,i)}</b><ul class="errlist">${x.errors.map(e=>`<li>${esc(e)}</li>`).join('')}</ul></div>`).join('');
+ }
+ if(sv?.saved)h+=`<p class="okmsg" style="margin-top:12px">${sv.lessonIds.length}レッスンを保存しました（新しく ${sv.created}、上書き ${sv.updated}）。「宿題の配布」で生徒に配ってください。</p>`;
  h+='</div>';
- if(c?.lesson){
-  const L=viewLesson(c.lesson),k=keyAnswers(L),J=teacherJudge(L);
-  h+=`<div class="card"><h2>確かめた結果：問題なし</h2>
-  <p class="unit">${esc(L.title)}${L.note?`<span class="tag">${esc(L.note)}</span>`:''}</p>${srcLine(L.source)}
-  <p class="muted">${esc(L.lessonId)}・${esc(L.grade)}・${L.sentences.length}文・意味調べ ${L.words.length}語</p></div>
-  <details class="card" open><summary>正解を色分けで見る（講師にだけ見える内容）</summary>${L.sentences.map((x,si)=>`<div class="sno" style="margin-top:12px">文 ${si+1}</div>${reviewLine(L,si,k,J)}`).join('')}
-  ${L.words.length?`<table class="mlist" style="margin-top:12px">${L.words.map(w=>`<tr><td class="en">${esc(w.w)}</td><td>${esc(k.meanings[w.w])}</td><td class="muted">正解にする言葉：${esc((w.ok||[]).join('、'))}</td></tr>`).join('')}</table>`:''}</details>`;
+ if(c?.ok){
+  const one=c.items.length===1;
+  h+=`<div class="card"><h2>確かめた結果：${c.items.length}レッスンとも問題なし</h2>`;
+  c.items.forEach((x,i)=>{
+   const L=viewLesson(x.L),k=keyAnswers(L),J=teacherJudge(L);
+   const old=S.aData?.lessons.find(l=>l.lessonId===L.lessonId);
+   h+=`<div class="batch">${old?`<p class="banner" style="margin:0 0 8px">登録ずみのレッスンです。保存すると上書きします${old.submissions?`（提出が ${old.submissions}件あります。文や単語の数が変わると、前の提出の見え方がずれることがあります）`:''}。</p>`:''}<div class="lrow" style="border:0;padding:0"><div><p class="unit">${esc(L.title)}${L.note?`<span class="tag">${esc(L.note)}</span>`:''}</p>${srcLine(L.source)}
+   <span class="muted">${esc(L.lessonId)}・${esc(L.grade)}・${L.sentences.length}文・意味調べ ${L.words.length}語</span>
+   <span class="muted" style="display:block">品詞のボタン：${esc(posSetOf(L).map(p=>p.name).join('・'))}　／　役割のボタン：${esc(roleSetOf(L).join('・'))}</span></div><button class="secondary" data-act="apreview" data-v="${i}">生徒の画面で見る</button></div>
+   <details ${one?'open':''}><summary class="muted">正解を色分けで見る（講師にだけ見える内容）</summary>${L.sentences.map((x2,si)=>`<div class="sno" style="margin-top:12px">文 ${si+1}</div>${reviewLine(L,si,k,J)}`).join('')}
+   ${L.words.length?`<table class="mlist" style="margin-top:12px">${L.words.map(w=>`<tr><td class="en">${esc(w.w)}</td><td>${esc(k.meanings[w.w])}</td><td class="muted">正解にする言葉：${esc((w.ok||[]).join('、'))}</td></tr>`).join('')}</table>`:''}</details></div>`;
+  });
+  h+='</div>';
  }
  const ls=S.aData.lessons;
- h+=`<div class="card"><h2>登録ずみのレッスン（${ls.length}件）</h2>${ls.length?ls.map(l=>`<div class="lrow"><div><b>${esc(l.title)}</b>${srcLine(l.source)||'<p class="src ngc">出典がありません（生徒に出せません）</p>'}<span class="muted">${esc(l.lessonId)}・${esc(l.grade)}・提出 ${l.submissions}件${l.updatedAt?`・${esc(fmt(l.updatedAt))} 更新`:''}</span></div><button class="secondary" data-act="aload" data-v="${esc(l.lessonId)}" ${dis}>読みこんで直す</button></div>`).join(''):'<p class="muted">まだありません。</p>'}</div>`;
+ h+=`<div class="card"><h2>登録ずみのレッスン（${ls.length}件）</h2>${ls.length?ls.map(l=>`<div class="lrow"><div><b>${esc(l.title)}</b>${srcLine(l.source)||'<p class="src ngc">出典がありません（生徒に出せません）</p>'}<span class="muted">${esc(l.lessonId)}・${esc(l.grade)}${l.note?`・${esc(l.note)}`:''}・提出 ${l.submissions}件${l.updatedAt?`・${esc(fmt(l.updatedAt))} 更新`:''}</span></div><button class="secondary" data-act="aload" data-v="${esc(l.lessonId)}" ${dis}>読みこんで直す</button></div>`).join(''):'<p class="muted">まだありません。</p>'}</div>`;
  return h;
 }
 function adminAssignView(){
@@ -1013,7 +1063,7 @@ document.addEventListener('click',e=>{
  else if(act==='step'){S.step=+el.dataset.v;S.si=0;window.scrollTo(0,0)}
  else if(act==='sent'){const v=+el.dataset.v;if(v>=0&&v<S.L.sentences.length)S.si=v}
  else if(act==='gap'){const si=+el.dataset.s,g=+el.dataset.g,b=a.bounds[si];const i=b.indexOf(g);i>=0?b.splice(i,1):b.push(g);markDirty()}
- else if(act==='role'){const si=+el.dataset.s,k=el.dataset.k,c=a.roles[si][k]||'';a.roles[si][k]=ROLE_CYCLE[(ROLE_CYCLE.indexOf(c)+1)%ROLE_CYCLE.length];if(!a.roles[si][k])delete a.roles[si][k];markDirty()}
+ else if(act==='role'){const si=+el.dataset.s,k=el.dataset.k,c=a.roles[si][k]||'',cy=['',...roleSetOf(S.L)];a.roles[si][k]=cy[(cy.indexOf(c)+1)%cy.length];if(!a.roles[si][k])delete a.roles[si][k];markDirty()}
  else if(act==='tool'){S.tool=el.dataset.v}
  else if(act==='word'){const si=+el.dataset.s,ti=+el.dataset.t,k=si+'-'+ti;
   if(S.tool==='?'){a.q[k]?delete a.q[k]:a.q[k]=1}
@@ -1030,9 +1080,8 @@ document.addEventListener('click',e=>{
  else if(act==='atab'){S.atab=el.dataset.v;S.aMsg=''}
  else if(act==='areload'){loadAdmin();return}
  else if(act==='acheck'){checkLessonJson()}
- else if(act==='apreview'){openPreview();return}
- else if(act==='asave'){saveLesson(false);return}
- else if(act==='aoverwrite'){saveLesson(true);return}
+ else if(act==='apreview'){openPreview(+el.dataset.v||0);return}
+ else if(act==='asave'){saveLesson();return}
  else if(act==='aload'){loadLessonJson(el.dataset.v);return}
  else if(act==='aclear'){S.aJson='';S.aCheck=null;S.aSave=null}
  else if(act==='pvback'){S.screen='admin';S.L=null;S.draft=null;S.sub=null;window.scrollTo(0,0)}

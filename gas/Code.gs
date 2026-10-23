@@ -1,6 +1,6 @@
 /**
  * 本文分析ノート（honbun-check） GAS バックエンド
- * v2（フェーズ2）
+ * v3（品詞14個・レッスンごとの品詞と役割（posSet / roleSet）・カンマ・話し手・まとめて登録）
  *
  * ・すべて doPost で JSON を受け取り、action で分ける。
  * ・答え（pos / alt / chunks / role / ok / why / example）は講師・教室長の操作でしか返さない。
@@ -10,7 +10,7 @@
  * ・パスワードは Settings にハッシュ（SHA-256）で置く。平文で書かれていたら、次に使うときにハッシュにして平文を消す。
  */
 
-const VERSION = 2;
+const VERSION = 3;
 const TZ = 'Asia/Tokyo';
 
 const SHEETS = {
@@ -23,8 +23,11 @@ const SHEETS = {
   Settings: ['key', 'value']
 };
 
-const POS_KEYS = ['名', '代', '動', '助', '形', '副', '前', '接', '冠'];
-const ROLES = ['S', 'V', 'O', 'C', '修飾', 'つなぎ'];
+const POS_KEYS = ['名', '代', '動', '助', '冠', '疑', '動名', '不', '形', '副', '前', '接', '間', 'その他'];
+const ROLES = ['S', 'V', 'O', 'C', '修飾', 'その他'];
+/* v2 までのレッスンで使っていた役割。新しいレッスンには使えないが、前のレッスンと提出は今までどおり採点する */
+const OLD_ROLES = ['つなぎ'];
+const ENDS = ['.', '!', '?'];
 
 /* 通行証の有効期間（ミリ秒） */
 const TOKEN_LIFE = { student: 180 * 864e5, teacher: 30 * 864e5, admin: 12 * 36e5 };
@@ -70,6 +73,7 @@ const ACTIONS = {
   adminData: { role: 'admin', fn: adminData },
   getLessonJson: { role: 'admin', fn: getLessonJson },
   upsertLesson: { role: 'admin', fn: upsertLesson },
+  upsertLessons: { role: 'admin', fn: upsertLessons },
   assign: { role: 'admin', fn: assign },
   unassign: { role: 'admin', fn: unassign }
 };
@@ -353,6 +357,10 @@ function loadLesson(lessonId) {
     s.chunks = Array.isArray(s.chunks) ? s.chunks : [];
     s.end = s.end || '';
   });
+  // 使う品詞と役割。v2 までのレッスンには無いので、そのときは全部を使う
+  L.posSet = Array.isArray(L.posSet) && L.posSet.length ? POS_KEYS.filter(k => L.posSet.indexOf(k) >= 0) : POS_KEYS.slice();
+  const used = OLD_ROLES.filter(r => L.sentences.some(s => s.chunks.some(c => c.role === r)));
+  L.roleSet = Array.isArray(L.roleSet) && L.roleSet.length ? ROLES.filter(k => L.roleSet.indexOf(k) >= 0) : ROLES.concat(used);
   return L;
 }
 
@@ -365,10 +373,20 @@ function assertSource(L) {
 function publicLesson(L) {
   return {
     lessonId: L.lessonId, title: L.title, note: L.note || '', grade: L.grade || '', source: L.source,
-    sentences: L.sentences.map(s => ({
-      tokens: s.tokens.map(t => (t.glue ? { w: t.w, glue: true } : { w: t.w })),
-      end: s.end
-    })),
+    posSet: L.posSet, roleSet: L.roleSet,
+    sentences: L.sentences.map(s => {
+      const o = {
+        tokens: s.tokens.map(t => {
+          const x = { w: t.w };
+          if (t.glue) x.glue = true;
+          if (t.punct) x.punct = t.punct;
+          return x;
+        }),
+        end: s.end
+      };
+      if (s.speaker) o.speaker = s.speaker;
+      return o;
+    }),
     words: L.words.map(w => ({ w: w.w, sentence: w.sentence }))
   };
 }
@@ -376,10 +394,11 @@ function publicLesson(L) {
 /** その生徒に配られたレッスン（Assignments シートにある分だけ） */
 function lessonsForStudent(st) {
   const lessons = rows('Lessons').filter(r => r.lessonId.trim());
+  const key = r => ({ grade: r.grade.trim(), unit: r.unit, part: r.part, lessonId: r.lessonId.trim() });
   return rows('Assignments').filter(a => a.studentId.trim() === st.studentId).map(a => {
     const l = lessons.find(r => r.lessonId.trim() === a.lessonId.trim());
     return l ? { row: l, dueDate: a.dueDate } : null;
-  }).filter(Boolean);
+  }).filter(Boolean).sort((a, b) => byUnitPart(key(a.row), key(b.row)));
 }
 
 function assertAssigned(st, lessonId) {
@@ -411,15 +430,24 @@ function lessonErrors(L) {
   if (!str(L.title)) add('title（レッスンの名前）が入っていません。');
   if (!str(L.grade)) add('grade（学年）が入っていません。');
   if (!str(L.source)) add('source（出典）が入っていません。出典がないレッスンは保存できません。');
+  const setOk = (v, all) => Array.isArray(v) && v.length && v.every(x => all.indexOf(x) >= 0) && v.every((x, i) => v.indexOf(x) === i);
+  const posSet = setOk(L.posSet, POS_KEYS) ? L.posSet : null;
+  const roleSet = setOk(L.roleSet, ROLES) ? L.roleSet : null;
+  if (!posSet) add(`posSet（使う品詞の一覧）は、${POS_KEYS.join('・')} の中から重ならないように選んで [ ] に入れてください。`);
+  if (!roleSet) add(`roleSet（使うかたまりの役割の一覧）は、${ROLES.join('・')} の中から重ならないように選んで [ ] に入れてください。`);
   if (!Array.isArray(L.sentences) || !L.sentences.length) { add('sentences（文）が1つもありません。'); return err; }
   L.sentences.forEach((s, si) => {
     const at = `文${si + 1}`;
     if (!s || !Array.isArray(s.tokens) || !s.tokens.length) { add(`${at}：tokens（単語）がありません。`); return; }
     const n = s.tokens.length;
+    if (ENDS.indexOf(s.end) < 0) add(`${at}：end（文の最後の記号）は ${ENDS.join(' ')} のどれかにしてください。`);
+    if (s.speaker !== undefined && (typeof s.speaker !== 'string' || s.speaker.length > 30)) add(`${at}：speaker（話し手）は30字までの文字にしてください。`);
     s.tokens.forEach((t, ti) => {
       const w = `${at}の${ti + 1}語目`;
       if (!t || !str(t.w)) { add(`${w}：w（単語）がありません。`); return; }
+      if (t.punct !== undefined && (typeof t.punct !== 'string' || !/^[^\s]{1,3}$/.test(t.punct))) add(`${w}「${t.w}」：punct は「,」のような3字までの記号にしてください。`);
       if (POS_KEYS.indexOf(t.pos) < 0) add(`${w}「${t.w}」：pos「${t.pos === undefined ? '' : t.pos}」は使えません（${POS_KEYS.join('・')}）。`);
+      else if (posSet && posSet.indexOf(t.pos) < 0) add(`${w}「${t.w}」：pos「${t.pos}」が posSet に入っていません（生徒のボタンに出ないので、正解できません）。`);
       if (t.alt !== undefined && (!Array.isArray(t.alt) || t.alt.some(x => POS_KEYS.indexOf(x) < 0))) add(`${w}「${t.w}」：alt は品詞の記号の並びにしてください。`);
     });
     if (!Array.isArray(s.chunks) || !s.chunks.length) { add(`${at}：chunks（かたまり）がありません。`); return; }
@@ -429,6 +457,7 @@ function lessonErrors(L) {
       if (!c || !Number.isInteger(c.from) || !Number.isInteger(c.to) || c.from > c.to) { add(`${k}：from / to が正しくありません。`); return; }
       if (c.from !== next) add(`${k}：from が ${next} ではありません（かたまりは前から順に、すきまなく並べます）。`);
       if (ROLES.indexOf(c.role) < 0) add(`${k}：role「${c.role === undefined ? '' : c.role}」は使えません（${ROLES.join('・')}）。`);
+      else if (roleSet && roleSet.indexOf(c.role) < 0) add(`${k}：role「${c.role}」が roleSet に入っていません（生徒のボタンに出ないので、正解できません）。`);
       next = c.to + 1;
     });
     if (next !== n) add(`${at}：かたまりが最後の単語（${n - 1}番）まで届いていないか、はみ出しています。`);
@@ -470,7 +499,7 @@ function normalize(L, a) {
     res.bounds[si] = Array.isArray(b) ? b.filter(g => Number.isInteger(g) && g >= 0 && g < n - 1) : [];
     const r = (a.roles || [])[si] || {};
     res.roles[si] = {};
-    Object.keys(r).forEach(k => { if (/^\d+-\d+$/.test(k) && ROLES.indexOf(r[k]) >= 0) res.roles[si][k] = r[k]; });
+    Object.keys(r).forEach(k => { if (/^\d+-\d+$/.test(k) && (ROLES.indexOf(r[k]) >= 0 || OLD_ROLES.indexOf(r[k]) >= 0)) res.roles[si][k] = r[k]; });
     const p = (a.pos || [])[si] || [];
     res.pos[si] = s.tokens.map((_, ti) => (POS_KEYS.indexOf(p[ti]) >= 0 ? p[ti] : null));
   });
@@ -649,8 +678,22 @@ function submit(req) {
 
 /* ===== 操作：講師（講師パスワードの通行証が必要） ===== */
 
+/** 「Unit 4」→ 4。数字がなければ大きい数にして、後ろに回す */
+function numOf(v) {
+  const m = /\d+/.exec(String(v || ''));
+  return m ? Number(m[0]) : 9999;
+}
+
+/** レッスンを 学年 → Unit → Part → lessonId の順に並べる */
+function byUnitPart(a, b) {
+  return String(a.grade).localeCompare(String(b.grade), 'ja') || numOf(a.unit) - numOf(b.unit) ||
+    numOf(a.part) - numOf(b.part) || String(a.lessonId).localeCompare(String(b.lessonId));
+}
+
 function lessonSummaries() {
-  return rows('Lessons').filter(r => r.lessonId.trim()).map(r => ({
+  return rows('Lessons').filter(r => r.lessonId.trim()).sort((a, b) => byUnitPart(
+    { grade: a.grade.trim(), unit: a.unit, part: a.part, lessonId: a.lessonId.trim() },
+    { grade: b.grade.trim(), unit: b.unit, part: b.part, lessonId: b.lessonId.trim() })).map(r => ({
     lessonId: r.lessonId.trim(), grade: r.grade.trim(), title: r.title || r.lessonId.trim(),
     note: noteOf(r), source: sourceOf(r), updatedAt: r.updatedAt
   }));
@@ -721,27 +764,56 @@ function getLessonJson(req) {
   return { lesson: L };
 }
 
-function upsertLesson(req) {
-  const L = req.lesson;
+/** 保存の前の確認。まちがいがあれば errors、なければシートに書く1行を返す */
+function lessonRowOf(L) {
   const errors = lessonErrors(L);
-  if (errors.length) return { saved: false, errors };
+  if (errors.length) return { errors };
   L.lessonId = L.lessonId.trim();
   L.source = L.source.trim();
   const json = JSON.stringify(L);
-  if (json.length > 45000) return { saved: false, errors: ['レッスンが長すぎます（スプレッドシートの1マスに入りません）。2つのレッスンに分けてください。'] };
-  return withLock(() => {
-    const r = rows('Lessons').find(x => x.lessonId.trim() === L.lessonId);
-    const submissions = rows('Submissions').filter(s => s.lessonId.trim() === L.lessonId).length;
-    if (r && !req.overwrite) return { saved: false, exists: true, submissions };
-    const obj = {
+  if (json.length > 45000) return { errors: ['レッスンが長すぎます（スプレッドシートの1マスに入りません）。2つのレッスンに分けてください。'] };
+  return {
+    row: {
       lessonId: L.lessonId, grade: String(L.grade).trim(),
       textbook: String(L.textbook || '').trim(), unit: unitLabel(L.unit, 'Unit'), part: unitLabel(L.part, 'Part'),
-      title: String(L.title).trim(), json, updatedAt: stamp()
-    };
-    if (r) updateObj('Lessons', r, obj);
-    else appendObj('Lessons', obj);
-    return { saved: true, created: !r, lessonId: L.lessonId, updatedAt: obj.updatedAt };
+      title: String(L.title).trim(), json, updatedAt: ''
+    }
+  };
+}
+
+/**
+ * レッスンをまとめて保存する。1つでもまちがいがあれば、どれも保存しない。
+ * 同じ lessonId のレッスンがもうあるときは上書きする。
+ */
+function upsertLessons(req) {
+  const list = Array.isArray(req.lessons) ? req.lessons : [];
+  if (!list.length) throw userError('レッスンが1つもありません。');
+  if (list.length > 60) throw userError('一度に保存できるのは60レッスンまでです。分けて保存してください。');
+  const checked = list.map((L, i) => Object.assign({ index: i, lessonId: L && typeof L.lessonId === 'string' ? L.lessonId.trim() : '' }, lessonRowOf(L)));
+  checked.forEach(c => {
+    if (c.row && checked.some(d => d !== c && d.lessonId === c.lessonId)) c.errors = [`同じ lessonId「${c.lessonId}」が2つ以上あります。`];
   });
+  const bad = checked.filter(c => c.errors);
+  if (bad.length) return { saved: false, errors: bad.map(c => ({ index: c.index, lessonId: c.lessonId, errors: c.errors })) };
+  return withLock(() => {
+    const now = rows('Lessons');
+    const at = stamp();
+    let created = 0, updated = 0;
+    checked.forEach(c => {
+      c.row.updatedAt = at;
+      const r = now.find(x => x.lessonId.trim() === c.lessonId);
+      if (r) { updateObj('Lessons', r, c.row); updated++; }
+      else { appendObj('Lessons', c.row); created++; }
+    });
+    return { saved: true, created, updated, lessonIds: checked.map(c => c.lessonId), updatedAt: at };
+  });
+}
+
+/** 1つだけ保存する（同じ lessonId があれば上書き） */
+function upsertLesson(req) {
+  const r = upsertLessons({ lessons: [req.lesson] });
+  if (r.errors) return { saved: false, errors: r.errors[0].errors };
+  return { saved: true, created: r.created === 1, lessonId: r.lessonIds[0], updatedAt: r.updatedAt };
 }
 
 function dueOf(v) {
@@ -837,6 +909,8 @@ const TEST_LESSON = {
   grade: '中1',
   title: 'テスト用　ぼくの犬',
   source: '出典：自作の英文（テスト用）',
+  posSet: ['名', '代', '動', '冠', '形', '副', '前', '接'],
+  roleSet: ['S', 'V', 'O', 'C', '修飾', 'その他'],
   sentences: [
     {
       tokens: [{ w: 'I', pos: '代' }, { w: 'have', pos: '動' }, { w: 'a', pos: '冠' }, { w: 'dog', pos: '名' }],
@@ -866,7 +940,7 @@ const TEST_LESSON = {
     {
       tokens: [{ w: 'But', pos: '接' }, { w: 'he', pos: '代' }, { w: 'runs', pos: '動' }, { w: 'fast', pos: '副', why: 'runs をくわしくする「速く」。動詞をくわしくするのは副詞。' }],
       end: '.',
-      chunks: [{ from: 0, to: 0, role: 'つなぎ', why: 'But は前の文とつなぐ語。' }, { from: 1, to: 1, role: 'S' }, { from: 2, to: 2, role: 'V' }, { from: 3, to: 3, role: '修飾', why: '「速く」は走り方をくわしくする。なくても文は成り立つ。' }]
+      chunks: [{ from: 0, to: 0, role: 'その他', why: 'But は前の文とつなぐ語。S・V・O・C・修飾のどれでもないので、その他。' }, { from: 1, to: 1, role: 'S' }, { from: 2, to: 2, role: 'V' }, { from: 3, to: 3, role: '修飾', why: '「速く」は走り方をくわしくする。なくても文は成り立つ。' }]
     },
     {
       tokens: [{ w: 'We', pos: '代' }, { w: 'are', pos: '動' }, { w: 'good', pos: '形' }, { w: 'friends', pos: '名' }],
