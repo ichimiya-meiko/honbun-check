@@ -98,6 +98,8 @@ select,input[type=text],input[type=password],textarea{background:var(--paper);bo
 .gap.on::after{width:2px;height:70%;margin:0 0 0 -1px;top:15%;border-radius:1px;background:var(--focus)}
 .role{margin-top:6px;border:1.5px dashed var(--sub);background:var(--paper);border-radius:999px;padding:1px 12px;font-size:.85rem;min-width:56px;min-height:40px;font-weight:700;color:var(--sub)}
 .role.set,.role.static{border-style:solid;color:#fff;border-color:transparent}
+/* 見直しの表示のラベル（span）も、ボタンと同じく文字を真ん中にする */
+.role.static{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
 .role[data-r="S"]{background:var(--r-S)}.role[data-r="V"]{background:var(--r-V)}.role[data-r="O"]{background:var(--r-O)}.role[data-r="C"]{background:var(--r-C)}.role[data-r="修飾"]{background:var(--r-M)}.role[data-r="つなぎ"]{background:var(--p-conj)}.role[data-r="その他"]{background:var(--r-etc)}
 .role.static[data-r=""]{background:var(--soft);color:var(--sub);border:1.5px dashed var(--sub)}
 .dot{color:var(--ink);font-size:1.35rem;align-self:flex-start;padding-top:6px;font-family:"Literata",serif}
@@ -134,7 +136,7 @@ textarea{width:100%;min-height:80px}
 .score .big small{font-size:1.1rem}
 .cats{display:flex;gap:16px;flex-wrap:wrap;font-size:.9rem;color:var(--sub)}
 .cats b{color:var(--ink)}
-.rv{display:flex;flex-wrap:wrap;row-gap:12px;align-items:flex-start}
+.rv{display:flex;flex-wrap:wrap;row-gap:12px;column-gap:8px;align-items:flex-start}
 .chunk.view .cw{padding:0 4px 2px;gap:2px;align-items:flex-end}
 .chunk.view.bad .cw{border-color:var(--ng)}
 .wd.static{cursor:default}
