@@ -1,5 +1,5 @@
 /*
- * 本文分析ノート 動作確認スクリプト（v3 用）
+ * 本文分析ノート 動作確認スクリプト（v4 用）
  *
  * 使い方
  *   1. Chrome で index.html を開き、ログインする（生徒・講師・教室長のどれでもよい）。
@@ -17,6 +17,8 @@
  *   ・生徒用の通信に答え（pos / alt / role / chunks / ok / why / example）が入っていないか
  *   ・レッスンに出典（source）が入っているか
  *   ・（教室長）まとめて保存するとき、まちがいが1つでもあれば何も保存されないか
+ *   ・（生徒）意味調べのせりふに、新出単語の意味と訳の答えが入っていないか
+ *   ・挿絵がもらえるか、配られていない人にはもらえないか（挿絵を受けとる時間も測ります）
  *   ・画面を描きかえる速さ
  *   ※ まちがったログインを数回ためします。同じ人を何回も続けてためすと、10分ログインできなくなることがあります。
  *
@@ -88,9 +90,18 @@
         const bad = findKeys(j.lesson, 'lesson').concat(findKeys(j.latest?.result || {}, 'result'));
         if (bad.length) throw new Error('答えが入っている：' + bad.slice(0, 5).join(', '));
         if (!j.lesson.source) throw new Error('出典が入っていない');
-        return `${j.lesson.sentences.length}文・答えは入っていない・出典あり`;
+        const lines = j.lesson.lines || [];
+        const leak = lines.filter(l => /[{}]/.test(l.ja) || (l.gloss || []).some(g => g.new && g.ja !== undefined));
+        if (leak.length) throw new Error('新出単語の答えが入っているせりふ：' + leak.length + 'つ');
+        return `${j.lesson.sentences.length}文・せりふ ${lines.length}・答えは入っていない・出典あり`;
+      });
+      await step('挿絵をもらう', async () => {
+        const j = await HC.api('getIllustrations', { lessonId });
+        const kb = j.images.reduce((t, i) => t + i.data.length * 3 / 4, 0) / 1024;
+        return j.images.length ? `${j.images.length}枚・${Math.round(kb)}KB` : '挿絵はまだ登録されていない';
       });
     }
+    await step('配られていないレッスンの挿絵はもらえない', () => expectFail(HC.api('getIllustrations', { lessonId: 'NO-SUCH-' + Date.now() }), ['']));
   } else if (role === 'teacher') {
     await step('講師の通行証では教室長の操作はできない', () => expectFail(HC.api('adminData'), ['auth']));
     await step('レッスンの一覧（講師）', async () => { const j = await HC.api('listLessons'); return `${j.lessons.length}件`; });
@@ -105,7 +116,9 @@
       const j = await HC.api('adminData');
       const noSrc = j.lessons.filter(l => !l.source);
       if (noSrc.length) throw new Error('出典がないレッスン：' + noSrc.map(l => l.lessonId).join(', '));
-      return `レッスン ${j.lessons.length}件・生徒 ${j.students.length}人・配布 ${j.assignments.length}件`;
+      if (!j.illustrations) throw new Error('挿絵のフォルダがない（Apps Script で setup を実行してください）');
+      const noIll = j.lessons.filter(l => !j.illustrations[l.lessonId]).length;
+      return `レッスン ${j.lessons.length}件・生徒 ${j.students.length}人・配布 ${j.assignments.length}件・挿絵がないレッスン ${noIll}件`;
     });
     await step('出典がないレッスンは保存できない', async () => {
       const j = await HC.api('upsertLesson', { lesson: { lessonId: 'CHECK-NOSOURCE', grade: '中1', title: 'check', source: '', posSet: ['名'], roleSet: ['S'], sentences: [{ tokens: [{ w: 'Hi', pos: '名' }], chunks: [{ from: 0, to: 0, role: 'S' }] }] } });

@@ -1,6 +1,6 @@
 /**
  * 本文分析ノート（honbun-check） GAS バックエンド
- * v3（品詞14個・レッスンごとの品詞と役割（posSet / roleSet）・カンマ・話し手・まとめて登録）
+ * v4（意味調べ：せりふ全部・日本語訳・単語の意味（lines）と挿絵。挿絵はドライブの非公開フォルダに置き、ログインした人にだけ返す）
  *
  * ・すべて doPost で JSON を受け取り、action で分ける。
  * ・答え（pos / alt / chunks / role / ok / why / example）は講師・教室長の操作でしか返さない。
@@ -10,7 +10,7 @@
  * ・パスワードは Settings にハッシュ（SHA-256）で置く。平文で書かれていたら、次に使うときにハッシュにして平文を消す。
  */
 
-const VERSION = 3;
+const VERSION = 4;
 const TZ = 'Asia/Tokyo';
 
 const SHEETS = {
@@ -75,7 +75,10 @@ const ACTIONS = {
   upsertLesson: { role: 'admin', fn: upsertLesson },
   upsertLessons: { role: 'admin', fn: upsertLessons },
   assign: { role: 'admin', fn: assign },
-  unassign: { role: 'admin', fn: unassign }
+  unassign: { role: 'admin', fn: unassign },
+  uploadIllustration: { role: 'admin', fn: uploadIllustration },
+  deleteIllustration: { role: 'admin', fn: deleteIllustration },
+  getIllustrations: { role: ['student', 'teacher', 'admin'], fn: getIllustrations }
 };
 
 function route(req) {
@@ -209,16 +212,18 @@ function makeToken(role, id) {
   return body + '.' + sign(body, fingerprintOf(role, id));
 }
 
+/** role は1つ（'student'）でも、いくつか（['student', 'teacher']）でもよい */
 function verifyToken(token, role) {
+  const roles = Array.isArray(role) ? role : [role];
   const bad = () => userError('ログインの期限が切れました。もう一度ログインしてください。', 'auth');
   const m = /^([A-Za-z0-9_-]+)\.([0-9a-f]{64})$/.exec(String(token || ''));
   if (!m) throw bad();
   let p;
   try { p = JSON.parse(unb64(m[1])); } catch (e) { throw bad(); }
-  if (!p || p.r !== role || !TOKEN_LIFE[role] || Date.now() - Number(p.t) > TOKEN_LIFE[role]) throw bad();
-  const fp = fingerprintOf(role, String(p.id));
+  if (!p || roles.indexOf(p.r) < 0 || !TOKEN_LIFE[p.r] || Date.now() - Number(p.t) > TOKEN_LIFE[p.r]) throw bad();
+  const fp = fingerprintOf(p.r, String(p.id));
   if (!fp || sign(m[1], fp) !== m[2]) throw bad();
-  return { role, id: String(p.id) };
+  return { role: p.r, id: String(p.id) };
 }
 
 /* ===== シートの読み書き ===== */
@@ -387,8 +392,22 @@ function publicLesson(L) {
       if (s.speaker) o.speaker = s.speaker;
       return o;
     }),
-    words: L.words.map(w => ({ w: w.w, sentence: w.sentence }))
+    words: L.words.map(w => ({ w: w.w, sentence: w.sentence })),
+    lines: Array.isArray(L.lines) ? L.lines.map(publicLine) : undefined
   };
+}
+
+/** 訳の中の {単語:訳} を「（　　）」にする（新出単語の答えを生徒に見せない） */
+function maskJa(ja) {
+  return String(ja || '').replace(/\{[^:{}]+:[^{}]*\}/g, '（　　）');
+}
+
+/** 生徒に送るせりふ。新出単語（new・hide）の意味と、訳の中の答えを削る。 */
+function publicLine(l) {
+  const o = { text: l.text, ja: maskJa(l.ja), gloss: (l.gloss || []).map(g => (g.new ? { w: g.w, new: true } : g.hide ? { w: g.w, hide: true } : { w: g.w, ja: g.ja })) };
+  if (l.speaker) o.speaker = l.speaker;
+  if (Number.isInteger(l.sentence)) o.sentence = l.sentence;
+  return o;
 }
 
 /** その生徒に配られたレッスン（Assignments シートにある分だけ） */
@@ -463,6 +482,7 @@ function lessonErrors(L) {
     if (next !== n) add(`${at}：かたまりが最後の単語（${n - 1}番）まで届いていないか、はみ出しています。`);
   });
   if (L.words !== undefined && !Array.isArray(L.words)) add('words は [ ] の並びにしてください。');
+  if (L.lines !== undefined) lineErrors(L, add);
   (Array.isArray(L.words) ? L.words : []).forEach((w, i) => {
     const k = `意味調べの${i + 1}語目`;
     if (!w || !str(w.w)) { add(`${k}：w（単語）がありません。`); return; }
@@ -470,6 +490,58 @@ function lessonErrors(L) {
     if (!Array.isArray(w.ok) || !w.ok.length || w.ok.some(x => !str(x))) add(`${k}「${w.w}」：ok（正解にする言葉）を1つ以上入れてください。`);
   });
   return err;
+}
+
+/** lines（意味調べのせりふ・訳・単語の意味）の確認 */
+function lineErrors(L, add) {
+  const str = v => typeof v === 'string' && v.trim() !== '';
+  if (!Array.isArray(L.lines) || !L.lines.length) { add('lines（せりふ）は [ ] の並びで、1つ以上入れてください。'); return; }
+  // 新出単語は、大文字・小文字を区別せずに words と結びつける（文の始めの Call と、words の call など）
+  const wordList = (Array.isArray(L.words) ? L.words : []).map(w => (w && typeof w.w === 'string' ? w.w.toLowerCase() : ''));
+  // 新出単語の文（words の sentence）。書きこむ欄（new）は、この文のせりふだけ
+  const wordSent = (Array.isArray(L.words) ? L.words : []).map(w => (w ? w.sentence : undefined));
+  const newSeen = {};
+  let nextSentence = 0;
+  L.lines.forEach((l, li) => {
+    const at = `せりふ${li + 1}`;
+    if (!l || !str(l.text)) { add(`${at}：text（英語の文）がありません。`); return; }
+    if (!str(l.ja)) add(`${at}：ja（日本語訳）がありません。`);
+    if (l.speaker !== undefined && (typeof l.speaker !== 'string' || l.speaker.length > 30)) add(`${at}：speaker（話し手）は30字までの文字にしてください。`);
+    if (l.sentence !== undefined) {
+      if (!Number.isInteger(l.sentence) || !L.sentences[l.sentence]) add(`${at}：sentence は 0〜${L.sentences.length - 1} の番号にしてください。`);
+      else if (l.sentence !== nextSentence) add(`${at}：sentence が ${nextSentence} ではありません（分析する文は、sentences の順番どおりに1回ずつ）。`);
+      else nextSentence++;
+    }
+    if (!Array.isArray(l.gloss) || !l.gloss.length) { add(`${at}：gloss（単語の意味）がありません。`); return; }
+    let pos = 0;
+    const marks = [];
+    String(l.ja || '').replace(/\{([^:{}]+):[^{}]*\}/g, (m, k) => { marks.push(k); return m; });
+    l.gloss.forEach((g, gi) => {
+      if (!g || !str(g.w)) { add(`${at}の${gi + 1}語目：w がありません。`); return; }
+      const p = l.text.indexOf(g.w, pos);
+      if (p < 0) add(`${at}の「${g.w}」：text の中に、この順番で見つかりません。`);
+      else pos = p + g.w.length;
+      const wi = wordList.indexOf(g.w.toLowerCase());
+      if (g.new || g.hide) {
+        const kind = g.new ? 'new' : 'hide';
+        if (g.new && g.hide) add(`${at}の「${g.w}」：new と hide は、どちらか1つにしてください。`);
+        if (wi < 0) add(`${at}の「${g.w}」：${kind} なのに words に入っていません。`);
+        else if (g.new && l.sentence !== wordSent[wi]) add(`${at}の「${g.w}」：new（書きこむ欄）にできるのは、words の sentence（文${wordSent[wi] + 1}）のせりふだけです。ほかのせりふで同じ意味なら hide にしてください。`);
+        else if (g.hide && l.sentence === wordSent[wi]) add(`${at}の「${g.w}」：words の sentence のせりふなので、hide ではなく new にしてください。`);
+        if (g.ja !== undefined) add(`${at}の「${g.w}」：新出単語には ja を書かないでください（答えになるため）。`);
+        if (marks.indexOf(g.w) < 0) add(`${at}の「${g.w}」：ja の中に {${g.w}:訳} の印がありません（訳の答えを隠すため）。`);
+        if (g.otherMeaning) add(`${at}の「${g.w}」：${kind} と otherMeaning は、いっしょに付けられません。`);
+        if (g.new && wi >= 0) newSeen[wordList[wi]] = true;
+      } else {
+        if (!str(g.ja)) add(`${at}の「${g.w}」：ja（その文の中での意味）がありません。`);
+        if (wi >= 0 && !g.otherMeaning) add(`${at}の「${g.w}」：新出単語と同じつづりです。同じ意味なら hide（答えを隠す）、意味がちがう決まった言い方なら otherMeaning を付けてください。`);
+        if (wi < 0 && g.otherMeaning) add(`${at}の「${g.w}」：otherMeaning は、新出単語と同じつづりの単語にだけ付けます。`);
+      }
+    });
+    marks.forEach(k => { if (!l.gloss.some(g => g && (g.new || g.hide) && g.w === k)) add(`${at}：ja の {${k}:…} にあたる新出単語（new か hide）が gloss にありません。`); });
+  });
+  if (nextSentence !== L.sentences.length) add(`lines の中に、分析する文（sentences）が ${L.sentences.length} 個そろっていません（今 ${nextSentence} 個）。`);
+  wordList.forEach(w => { if (w && !newSeen[w]) add(`意味調べの「${w}」：words の sentence のせりふの gloss に new として入っていません。`); });
 }
 
 /* ===== 採点 ===== */
@@ -751,7 +823,7 @@ function adminData() {
   const assignments = rows('Assignments').filter(a => a.lessonId.trim() && a.studentId.trim()).map(a => ({
     lessonId: a.lessonId.trim(), studentId: a.studentId.trim(), dueDate: a.dueDate
   }));
-  return { lessons, students, assignments, loadedAt: stamp() };
+  return { lessons, students, assignments, illustrations: illustrationIndex(), loadedAt: stamp() };
 }
 
 function getLessonJson(req) {
@@ -860,6 +932,83 @@ function unassign(req) {
   });
 }
 
+/* ===== 挿絵（ドライブの非公開フォルダに置き、ログインした人にだけ返す） ===== */
+
+const ILL_TYPES = { 'image/jpeg': 'jpg', 'image/png': 'png', 'image/webp': 'webp' };
+const ILL_NAME = /^([A-Za-z0-9_-]{1,40})-([12])\.(jpg|png|webp)$/;
+
+function illFolder() {
+  const id = getSetting('illustrationFolderId');
+  if (!id) throw userError('挿絵のフォルダがまだありません。Apps Script で setup を実行してください。');
+  return DriveApp.getFolderById(id);
+}
+
+/** フォルダの中の挿絵を {lessonId: {1: file, 2: file}} にする */
+function illFiles() {
+  const out = {};
+  const it = illFolder().getFiles();
+  while (it.hasNext()) {
+    const f = it.next();
+    const m = ILL_NAME.exec(f.getName());
+    if (!m) continue;
+    (out[m[1]] = out[m[1]] || {})[m[2]] = f;
+  }
+  return out;
+}
+
+/** 教室長画面用：レッスンごとの挿絵の番号 */
+function illustrationIndex() {
+  if (!getSetting('illustrationFolderId')) return null;
+  const files = illFiles(), o = {};
+  Object.keys(files).forEach(id => { o[id] = Object.keys(files[id]).sort().map(Number); });
+  return o;
+}
+
+function illTarget(req) {
+  const id = String(req.lessonId || '').trim();
+  if (!/^[A-Za-z0-9_-]{1,40}$/.test(id)) throw userError('lessonId が正しくありません。');
+  const n = String(req.index || '');
+  if (n !== '1' && n !== '2') throw userError('挿絵の番号は 1 か 2 にしてください。');
+  return { id, n };
+}
+
+function uploadIllustration(req) {
+  const { id, n } = illTarget(req);
+  const ext = ILL_TYPES[req.mime];
+  if (!ext) throw userError('画像は JPEG・PNG・WebP のどれかにしてください。');
+  const data = String(req.data || '');
+  if (!data || data.length > 1500000) throw userError('画像が大きすぎます（1MB まで）。');
+  const blob = Utilities.newBlob(Utilities.base64Decode(data), req.mime, `${id}-${n}.${ext}`);
+  return withLock(() => {
+    const old = (illFiles()[id] || {})[n];
+    if (old) old.setTrashed(true);
+    illFolder().createFile(blob);
+    return { lessonId: id, index: Number(n), bytes: blob.getBytes().length };
+  });
+}
+
+function deleteIllustration(req) {
+  const { id, n } = illTarget(req);
+  return withLock(() => {
+    const old = (illFiles()[id] || {})[n];
+    if (old) old.setTrashed(true);
+    return { lessonId: id, index: Number(n), deleted: !!old };
+  });
+}
+
+/** 挿絵を返す。生徒には、配られたレッスンの挿絵だけ返す。 */
+function getIllustrations(req) {
+  const id = String(req.lessonId || '').trim();
+  if (req.who.role === 'student') assertAssigned(findStudent(req.who.id), id);
+  if (!getSetting('illustrationFolderId')) return { lessonId: id, images: [] };
+  const files = illFiles()[id] || {};
+  const images = Object.keys(files).sort().map(k => {
+    const b = files[k].getBlob();
+    return { index: Number(k), mime: b.getContentType(), data: Utilities.base64Encode(b.getBytes()) };
+  });
+  return { lessonId: id, images };
+}
+
 /* ===== 最初に1回だけ実行する：シートの準備（v1 から上げるときも、もう一度実行する） ===== */
 
 function setup() {
@@ -885,6 +1034,11 @@ function setup() {
   [['classCode', 'kyoshitsu-test'], ['teacherPass', 'sensei-test'], ['adminPass', '']].forEach(([k, v]) => {
     if (have.indexOf(k) < 0 && have.indexOf(k + 'Hash') < 0) appendObj('Settings', { key: k, value: v });
   });
+  // 挿絵を置く非公開フォルダ（共有はしない）
+  if (!getSetting('illustrationFolderId')) {
+    const f = DriveApp.createFolder('本文分析ノート 挿絵');
+    appendObj('Settings', { key: 'illustrationFolderId', value: f.getId() });
+  }
   if (rows('Students').length === 0) {
     [['T01', 'テスト 生徒A', '1111'], ['T02', 'テスト 生徒B', '2222'], ['T03', 'テスト 生徒C', '3333']].forEach(([id, name, pin]) =>
       appendObj('Students', { studentId: id, name, grade: '中1', pin, active: 'TRUE' }));
