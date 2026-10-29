@@ -351,14 +351,14 @@ button[disabled]{opacity:.5;cursor:default}
 </head>
 <body>
 <header><div class="hin">
-  <div class="brand">本文分析ノート<small>v5</small></div>
+  <div class="brand">本文分析ノート<small>v6</small></div>
   <div class="hright" id="hright"></div>
 </div></header>
 <main id="main"></main>
 
 <script>
 /* ===== 設定 ===== */
-const VERSION=5;
+const VERSION=6;
 /* ↓ GAS を「ウェブアプリ」として公開したときの URL を ' ' の間に貼る（docs/setup.md 手順7） */
 const API_URL='https://script.google.com/macros/s/AKfycbxUiT8hdHzK3Ol4ZKZJT1hFNnyWGQolkUCGVA3amXMKUl_dXqweX0BrD6XMpVfs9Q_j/exec';
 
@@ -401,6 +401,10 @@ const posOf=k=>POS.find(p=>p.k===k);
 const posName=k=>posOf(k)?.name||'';
 const posVar=k=>posOf(k)?`var(${posOf(k).v})`:'var(--line)';
 const posOk=(tk,v)=>!!v&&(v===tk.pos||(tk.alt||[]).includes(v));
+/* 意味調べの答えを比べるための形（gas/Code.gs の normJa と同じ決まり）。全角と半角、カタカナとひらがな、空白や「。」のちがいを同じとみなす */
+const normJa=s=>String(s??'').normalize('NFKC').toLowerCase().replace(/[\u30a1-\u30f6]/g,c=>String.fromCharCode(c.charCodeAt(0)-0x60)).replace(/[\s。、．，,.・!?「」『』（）()\[\]【】〈〉《》〜~…‥'"’”“‘]/g,'');
+const meanOkJs=(oks,v)=>{const a=normJa(v);return !!a&&(oks||[]).some(k=>{const n=normJa(k);return !!n&&a.includes(n)})};
+
 const jt=toks=>toks.map((t,i)=>(i&&!t.glue?' ':'')+t.w+(t.punct||'')).join('');
 /* 単語のすぐ後ろの記号（カンマなど）と、文の話し手 */
 const pn=t=>esc(t.punct||'');
@@ -635,7 +639,7 @@ const markBadge=r=>r?`<span class="rmk r-${r}" aria-label="${{o:'正解',t:'△'
 /* ◯ のときの、小さく喜べる一言（問題ごとに決まった言葉を出す） */
 const CHEERS=['やったね！','いいね！','その調子！','すばらしい！','ばっちり！'];
 const cheer=k=>CHEERS[[...String(k)].reduce((t,c)=>t+c.charCodeAt(0),0)%CHEERS.length];
-function meanFixed(w,it,a){return it.r!=='x'||(it.ok||[]).some(k=>(a.meanings[w]||'').includes(k))}
+function meanFixed(w,it,a){return it.r!=='x'||meanOkJs(it.ok,a.meanings[w])}
 function posFixed(si,ti,it,a){const v=a.pos[si][ti];return it.r!=='x'||v===it.ans||(it.alt||[]).includes(v)}
 function chunkFixed(it,a){
  if(it.r!=='x')return true;
@@ -748,7 +752,7 @@ function localCheck(q){
  let unit;
  if(q.kind==='mean'){
   const w=L.words.find(x=>x.w===q.w),k='m:'+w.w;unit=k;
-  const v=(a.meanings[w.w]||'').trim(),it=judge(k,!!v&&(w.ok||[]).some(o=>v.includes(o)));
+  const it=judge(k,meanOkJs(w.ok,a.meanings[w.w]));
   items[k]=pub(k,it,{ans:w.example||(w.ok||[])[0]||'',ok:w.ok||[],why:w.why||''});
  }else if(q.kind==='pos'){
   const si=q.si,s=L.sentences[si];unit='p:'+si;
@@ -1163,7 +1167,7 @@ function grade(L,a){
   const ch=chunksFrom(a.bounds[si],s.tokens.length);
   s.chunks.forEach(c=>{const has=ch.some(x=>x[0]===c.from&&x[1]===c.to);const role=a.roles[si][c.from+'-'+c.to];items.push({cat:'かたまり',s:si,a:c.from,b:c.to,ok:has&&role===c.role,key:c.role,why:c.why})});
  });
- L.words.forEach(w=>{const v=(a.meanings[w.w]||'').trim();items.push({cat:'意味',w:w.w,ok:!!v&&(w.ok||[]).some(k=>v.includes(k)),ans:v,key:w.example||(w.ok||[])[0]||'',why:w.why})});
+ L.words.forEach(w=>{const v=(a.meanings[w.w]||'').trim();items.push({cat:'意味',w:w.w,ok:meanOkJs(w.ok,v),ans:v,key:w.example||(w.ok||[])[0]||'',why:w.why})});
  const by=c=>{const f=items.filter(i=>i.cat===c);return{n:f.length,hit:f.filter(i=>i.ok).length}};
  const hit=items.filter(i=>i.ok).length;
  return{items,rate:items.length?Math.round(hit/items.length*100):0,cats:{意味:by('意味'),かたまり:by('かたまり'),品詞:by('品詞')}};
@@ -1270,11 +1274,26 @@ function keyInfo(L,k){
  const[f,t]=rest.split('-').map(Number),c=L.sentences[+si].chunks.find(x=>x.from===f&&x.to===t)||{};
  return{key:`[${words(L,+si,f,t)}] ${c.role}`,why:c.why||ROLE_WHY[c.role]||'',ask:ROLE_ASK[c.role]||''};
 }
-function oxtItem(L,k,it,rt){
+function oxtItem(L,k,it,rt,sid){
  const ki=keyInfo(L,k),type=k[0]==='m'?'意味':k[0]==='c'?'かたまり':'品詞';
+ const ovBtn=k[0]==='m'&&it.r==='x'&&String(it.a1||'').trim()&&sid?`<p style="margin:6px 0 0"><button class="secondary" data-act="tov" data-v="${esc(sid)}" data-k="${esc(k)}" ${S.checking?'disabled':''}>◯にする</button> <span class="muted">この答えでも正しいとき。次からこの答えは ◯ になります。</span></p>`:'';
  return `<div class="mk"><div class="mk-h">${markBadge(it.r)}<span class="mk-type t-${type}">${type}</span>${itemLabel(L,k)}${it.f?`<span class="qtag" style="color:var(--ng);border-color:var(--ng)">ふり返り：${REF[it.f]}</span>`:''}${rt?.r?`<span class="tagf">解き直し ${MARK[rt.r]}</span>`:''}</div>
  <div class="tries"><span class="was">生徒：${esc(ansText(L,k,it.a1))}</span><span class="right">正解：${esc(ki.key)}</span></div>
- <p class="why"><b>理由</b>${esc(ki.why)}</p><p class="ask"><b>聞き方</b>${esc(ki.ask)}</p></div>`;
+ <p class="why"><b>理由</b>${esc(ki.why)}</p><p class="ask"><b>聞き方</b>${esc(ki.ask)}</p>${ovBtn}</div>`;
+}
+/* 講師が意味調べの ✕ を ◯ にする */
+async function overrideMeaning(sid,k){
+ const st=S.tData.students.find(x=>x.latest?.submissionId===sid);if(!st)return;
+ const it=st.latest.checks.items[k];
+ if(!confirm(`「${it.a1}」を正解にして、${st.name} さんの「${k.slice(2)}」を ◯ にしますか？\n次から、この答えはほかの生徒も ◯ になります。`))return;
+ S.checking=true;S.error='';render();
+ try{
+  const j=await api('overrideMeaning',{submissionId:sid,key:k});
+  Object.assign(it,j.item);st.latest.rate=j.rate;st.latest.cats=j.cats;
+  const w=S.tData.lesson.words.find(x=>'m:'+x.w===k);if(w&&j.added)w.ok=(w.ok||[]).concat([j.added]);
+  S.tMsg=`${st.name} さんの「${k.slice(2)}」を ◯ にしました。${j.added?`「${j.added}」を正解の言葉に足しました。`:''}`;
+ }catch(e){handleError(e)}
+ S.checking=false;render();
 }
 /* v5：授業で聞くこと（✕ → ？ の順） */
 function scaffoldsV5(L,r){
@@ -1302,11 +1321,12 @@ function detailViewV5(L,st){
  L.sentences.forEach((x,si)=>{
   const list=Object.entries(items).filter(([k])=>k[0]!=='m'&&+k.split(':')[1]===si).filter(bad);
   if(!list.length){h+=`<div class="card okrow"><span class="sno">文 ${si+1}</span><span class="okc">全部 ◯</span><span class="msent small">${spkIn(x)}${esc(jt(x.tokens)+x.end)}</span></div>`;return}
-  const grp=(c,label)=>{const g=list.filter(([k])=>k[0]===c);return g.length?`<h3 class="mk-sec">${label}（${g.length}か所）</h3><div class="mks">${g.map(([k,it])=>oxtItem(L,k,it,rt?.items?.[k])).join('')}</div>`:''};
+  const grp=(c,label)=>{const g=list.filter(([k])=>k[0]===c);return g.length?`<h3 class="mk-sec">${label}（${g.length}か所）</h3><div class="mks">${g.map(([k,it])=>oxtItem(L,k,it,rt?.items?.[k],r.submissionId)).join('')}</div>`:''};
   h+=`<div class="card"><div class="sno">文 ${si+1}</div><p class="msent">${spkIn(x)}${esc(jt(x.tokens)+x.end)}</p>${grp('c','かたまり')}${grp('p','品詞')}</div>`;
  });
  const mean=Object.entries(items).filter(([k])=>k[0]==='m').filter(bad);
- if(mean.length)h+=`<div class="card"><div class="sno">意味調べ</div><div class="mks">${mean.map(([k,it])=>oxtItem(L,k,it,rt?.items?.[k])).join('')}</div></div>`;
+ if(S.tMsg)h+=`<p class="okmsg" role="status">${esc(S.tMsg)}</p>`;
+ if(mean.length)h+=`<div class="card"><div class="sno">意味調べ</div><div class="mks">${mean.map(([k,it])=>oxtItem(L,k,it,rt?.items?.[k],r.submissionId)).join('')}</div></div>`;
  const J=teacherJudge(L);
  h+=`<details class="card"><summary>生徒の最後の答え全体を色分けで見る</summary>${L.sentences.map((x,si)=>`<div class="sno" style="margin-top:12px">文 ${si+1}</div>${reviewLine(L,si,r.answers,J)}`).join('')}</details>`;
  return h+'</div>';
@@ -1717,9 +1737,10 @@ document.addEventListener('click',e=>{
  else if(act==='startretry'){if(S.rt&&!confirm('解き直しを、はじめからやり直しますか？'))return;startRetry();return}
  else if(act==='contretry'){enterRetry()}
  else if(act==='endretry'){S.mode='main';S.showResult=true;window.scrollTo(0,0)}
- else if(act==='trow'){S.tsel=el.dataset.v}
+ else if(act==='trow'){S.tsel=el.dataset.v;S.tMsg=''}
  else if(act==='check'){setCheck(el.dataset.v,true);return}
  else if(act==='uncheck'){setCheck(el.dataset.v,false);return}
+ else if(act==='tov'){overrideMeaning(el.dataset.v,el.dataset.k);return}
  else if(act==='treload'){loadTeacher();return}
  else if(act==='atab'){S.atab=el.dataset.v;S.aMsg=''}
  else if(act==='areload'){loadAdmin();return}
@@ -1766,7 +1787,7 @@ window.addEventListener('pagehide',beaconFlush);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')beaconFlush()});
 
 /* 動作確認スクリプト（tools/console-check.js）から使う */
-window.HC={VERSION,api,state:S,render,get apiUrl(){return API_URL}};
+window.HC={VERSION,api,state:S,render,normJa,get apiUrl(){return API_URL}};
 start();
 </script>
 </body>

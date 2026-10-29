@@ -1,6 +1,6 @@
 /**
  * 本文分析ノート（honbun-check） GAS バックエンド
- * v5（1問ずつ「確かめる」：正解は ◯、ちがえば ✕ と答え・理由をすぐ見せる。解き直しと、✕ のあとのふり返りの記録）
+ * v6（意味調べの書き方のちがい（漢字・ひらがな・カタカナ・全角半角・空白）を同じとみなす。講師が意味調べの ✕ を ◯ にでき、その答えをレッスンの正解の言葉に足す）
  *
  * ・すべて doPost で JSON を受け取り、action で分ける。
  * ・答え（pos / alt / chunks / role / ok / why / example）は講師・教室長の操作でしか返さない。
@@ -10,7 +10,7 @@
  * ・パスワードは Settings にハッシュ（SHA-256）で置く。平文で書かれていたら、次に使うときにハッシュにして平文を消す。
  */
 
-const VERSION = 5;
+const VERSION = 6;
 const TZ = 'Asia/Tokyo';
 
 const SHEETS = {
@@ -74,6 +74,7 @@ const ACTIONS = {
   listSubmissions: { role: 'teacher', fn: listSubmissions },
   check: { role: 'teacher', fn: check },
   uncheck: { role: 'teacher', fn: uncheck },
+  overrideMeaning: { role: 'teacher', fn: overrideMeaning },
   adminData: { role: 'admin', fn: adminData },
   getLessonJson: { role: 'admin', fn: getLessonJson },
   upsertLesson: { role: 'admin', fn: upsertLesson },
@@ -640,8 +641,7 @@ function grade(L, a) {
     });
   });
   L.words.forEach(w => {
-    const v = (a.meanings[w.w] || '').trim();
-    items.push({ cat: '意味', w: w.w, ok: !!v && (w.ok || []).some(k => v.indexOf(k) >= 0) });
+    items.push({ cat: '意味', w: w.w, ok: meanOk(w, a.meanings[w.w]) });
   });
   const by = c => { const f = items.filter(i => i.cat === c); return { n: f.length, hit: f.filter(i => i.ok).length }; };
   const hit = items.filter(i => i.ok).length;
@@ -871,9 +871,20 @@ function recScore(L, rec) {
   return { rate: keys.length ? Math.round(o / keys.length * 100) : 0, cats };
 }
 
+/**
+ * 意味調べの答えを比べるための形にする。
+ * 全角と半角（ＡＢＣ→abc、ｶﾀｶﾅ→カタカナ）、カタカナとひらがな、空白や「。」「、」などの記号のちがいを、同じとみなす。
+ * 画面（index.html の normJa）と同じ決まり。
+ */
+function normJa(s) {
+  return String(s === undefined || s === null ? '' : s).normalize('NFKC').toLowerCase()
+    .replace(/[\u30a1-\u30f6]/g, c => String.fromCharCode(c.charCodeAt(0) - 0x60))
+    .replace(/[\s。、．，,.・!?「」『』（）()\[\]【】〈〉《》〜~…‥'"’”“‘]/g, '');
+}
+
 function meanOk(w, v) {
-  v = String(v || '').trim();
-  return !!v && (w.ok || []).some(k => v.indexOf(k) >= 0);
+  const a = normJa(v);
+  return !!a && (w.ok || []).some(k => { const n = normJa(k); return !!n && a.indexOf(n) >= 0; });
 }
 
 /** 問題が決まったとき、生徒に返してよい形。✕ のときは答えと理由を付ける */
@@ -1110,6 +1121,41 @@ function setCheck(req, on) {
     const checkedAt = on ? stamp() : '';
     updateObj('Submissions', r, { checkedBy: name, checkedAt });
     return { submissionId: id, checkedBy: name, checkedAt };
+  });
+}
+
+/**
+ * 講師が、意味調べの ✕ を ◯ に直す。その生徒の正答率も直し、その答えをレッスンの正解の言葉（ok）に足す（次からは ◯ になる）。
+ * 解き直しの記録と、ほかの生徒の記録は変えない。
+ */
+function overrideMeaning(req) {
+  const id = String(req.submissionId || ''), key = String(req.key || '');
+  if (!/^m:/.test(key)) throw userError('◯ にできるのは、意味調べの問題だけです。');
+  return withLock(() => {
+    const r = rows('Submissions').find(x => x.submissionId === id);
+    if (!r) throw userError('この提出が見つかりません。画面を最新にしてください。');
+    const L = loadLesson(r.lessonId);
+    const raw = parseJson(r.answersJson, {});
+    const it = raw.checks && raw.checks.items && raw.checks.items[key];
+    if (!it || it.r !== 'x') throw userError('この問題は ✕ ではありません。画面を最新にしてください。');
+    const ans = String(it.a1 || '').trim();
+    if (!normJa(ans)) throw userError('答えが空なので、◯ にできません。');
+    it.r = 'o';
+    it.ov = { by: req.who.id, at: stamp() };
+    const sc = recScore(L, raw.checks);
+    updateObj('Submissions', r, { answersJson: JSON.stringify(raw), rate: sc.rate, catScoresJson: JSON.stringify(sc.cats) });
+    // レッスンの正解の言葉に足す（もう正解になる言葉が入っていれば足さない）
+    const lr = rows('Lessons').find(x => x.lessonId.trim() === L.lessonId);
+    const LJ = lr ? parseJson(lr.json, null) : null;
+    const w = LJ && (LJ.words || []).find(x => 'm:' + x.w === key);
+    let added = '';
+    if (w && !meanOk(w, ans)) {
+      added = ans.slice(0, 40);
+      w.ok = (w.ok || []).concat([added]);
+      updateObj('Lessons', lr, { json: JSON.stringify(LJ), updatedAt: stamp() });
+      forgetLessons([L.lessonId]);
+    }
+    return { submissionId: id, key, rate: sc.rate, cats: sc.cats, item: it, added };
   });
 }
 

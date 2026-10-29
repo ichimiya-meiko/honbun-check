@@ -1,5 +1,5 @@
 /*
- * 本文分析ノート 動作確認スクリプト（v5 用）
+ * 本文分析ノート 動作確認スクリプト（v6 用）
  *
  * 使い方
  *   1. Chrome で index.html を開き、ログインする（生徒・講師・教室長のどれでもよい）。
@@ -101,6 +101,14 @@
         if (early.length) throw new Error('まだ確かめていない問題の答えが入っている：' + early.length + 'つ');
         return `${j.lesson.sentences.length}文・せりふ ${lines.length}・確かめた問題 ${items.filter(([, it]) => it.r).length}/${j.total}・答えは入っていない・出典あり`;
       });
+      await step('生徒は、意味調べの ✕ を ◯ にできない', () => expectFail(HC.api('overrideMeaning', { submissionId: 'x', key: 'm:x' }), ['auth']));
+      await step('画面の採点：書き方のちがいを同じとみなす', async () => {
+        const f = HC.normJa;
+        if (typeof f !== 'function') throw new Error('normJa がない（index.html が v6 になっていない）');
+        const same = [['ダレ', 'だれ'], ['ｶﾒﾗ', 'かめら'], ['　たぶん。', 'たぶん'], ['ＴＶ', 'tv']].every(([a, b]) => f(a) === f(b));
+        if (!same) throw new Error('書き方のちがいを同じとみなしていない');
+        return 'カタカナ・半角・全角・空白・「。」を同じとみなす';
+      });
       await step('ログインしていないと「確かめる」は使えない', () => expectFail(HC.api('checkItem', { token: '', lessonId, kind: 'mean', w: 'x', answers: {} }), ['auth']));
       await step('挿絵をもらう', async () => {
         const j = await HC.api('getIllustrations', { lessonId });
@@ -111,6 +119,7 @@
     await step('配られていないレッスンの挿絵はもらえない', () => expectFail(HC.api('getIllustrations', { lessonId: 'NO-SUCH-' + Date.now() }), ['']));
   } else if (role === 'teacher') {
     await step('講師の通行証では教室長の操作はできない', () => expectFail(HC.api('adminData'), ['auth']));
+    await step('意味調べの ✕ を ◯ にする操作は、ない提出ではことわる', () => expectFail(HC.api('overrideMeaning', { submissionId: 'no-such-' + Date.now(), key: 'm:x' }), ['']));
     await step('講師の通行証では生徒の「確かめる」は使えない', () => expectFail(HC.api('checkItem', { lessonId: S.tLessonId || 'x', kind: 'mean', w: 'x', answers: {} }), ['auth']));
     await step('レッスンの一覧（講師）', async () => { const j = await HC.api('listLessons'); return `${j.lessons.length}件`; });
     if (S.tLessonId) {
