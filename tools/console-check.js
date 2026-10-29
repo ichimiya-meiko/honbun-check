@@ -1,5 +1,5 @@
 /*
- * 本文分析ノート 動作確認スクリプト（v4 用）
+ * 本文分析ノート 動作確認スクリプト（v5 用）
  *
  * 使い方
  *   1. Chrome で index.html を開き、ログインする（生徒・講師・教室長のどれでもよい）。
@@ -19,12 +19,14 @@
  *   ・（教室長）まとめて保存するとき、まちがいが1つでもあれば何も保存されないか
  *   ・（生徒）意味調べのせりふに、新出単語の意味と訳の答えが入っていないか
  *   ・挿絵がもらえるか、配られていない人にはもらえないか（挿絵を受けとる時間も測ります）
+ *   ・（生徒）まだ確かめていない問題の答えが届いていないか。ログインしていない人や講師は「確かめる」を使えないか
  *   ・画面を描きかえる速さ
  *   ※ まちがったログインを数回ためします。同じ人を何回も続けてためすと、10分ログインできなくなることがあります。
  *
- * おまけ（テスト用の生徒でだけ使う。提出が3回ふえます）
- *   生徒でログインしてレッスンを開いた状態で、コンソールに  HC_CHECK.concurrent()  と打って Enter。
- *   同時に2回提出して、どちらも欠けずに保存されるかを確かめます。
+ * おまけ（テスト用の生徒でだけ使う。本当に記録が残ります）
+ *   ・HC_CHECK.speed()  … 生徒でレッスンを開いた状態で打つ。意味調べの1語目を「確かめる」して、かかる時間を測ります。
+ *     （その1語は ◯ か ✕ に決まります。テスト用の生徒で、まだ確かめていないレッスンで使ってください）
+ *   ・HC_CHECK.once()   … 提出がすんだレッスンを開いた状態で打つ。もう一度提出しても、提出がふえない（1回だけ）ことを確かめます。
  */
 (async () => {
   const HC = window.HC;
@@ -93,8 +95,13 @@
         const lines = j.lesson.lines || [];
         const leak = lines.filter(l => /[{}]/.test(l.ja) || (l.gloss || []).some(g => g.new && g.ja !== undefined));
         if (leak.length) throw new Error('新出単語の答えが入っているせりふ：' + leak.length + 'つ');
-        return `${j.lesson.sentences.length}文・せりふ ${lines.length}・答えは入っていない・出典あり`;
+        // まだ確かめていない問題には、答えもかたまりの場所も入っていないこと
+        const items = Object.entries(j.checks?.items || {});
+        const early = items.filter(([k, it]) => !it.r && (k[0] === 'c' || it.ans !== undefined || it.why !== undefined));
+        if (early.length) throw new Error('まだ確かめていない問題の答えが入っている：' + early.length + 'つ');
+        return `${j.lesson.sentences.length}文・せりふ ${lines.length}・確かめた問題 ${items.filter(([, it]) => it.r).length}/${j.total}・答えは入っていない・出典あり`;
       });
+      await step('ログインしていないと「確かめる」は使えない', () => expectFail(HC.api('checkItem', { token: '', lessonId, kind: 'mean', w: 'x', answers: {} }), ['auth']));
       await step('挿絵をもらう', async () => {
         const j = await HC.api('getIllustrations', { lessonId });
         const kb = j.images.reduce((t, i) => t + i.data.length * 3 / 4, 0) / 1024;
@@ -104,6 +111,7 @@
     await step('配られていないレッスンの挿絵はもらえない', () => expectFail(HC.api('getIllustrations', { lessonId: 'NO-SUCH-' + Date.now() }), ['']));
   } else if (role === 'teacher') {
     await step('講師の通行証では教室長の操作はできない', () => expectFail(HC.api('adminData'), ['auth']));
+    await step('講師の通行証では生徒の「確かめる」は使えない', () => expectFail(HC.api('checkItem', { lessonId: S.tLessonId || 'x', kind: 'mean', w: 'x', answers: {} }), ['auth']));
     await step('レッスンの一覧（講師）', async () => { const j = await HC.api('listLessons'); return `${j.lessons.length}件`; });
     if (S.tLessonId) {
       await step('提出の一覧（講師）', async () => {
@@ -150,24 +158,27 @@
   console.log(ng ? `NG が ${ng} 件あります。` : 'すべて OK です。');
 
   window.HC_CHECK = {
-    /* 同時に2回提出して、どちらも保存されるか確かめる（テスト用の生徒で使う） */
-    async concurrent() {
+    /* 意味調べの1語目を「確かめる」して、時間を測る（テスト用の生徒で使う。その1語は ◯ か ✕ に決まる） */
+    async speed() {
       if (S.auth?.role !== 'student' || !S.L) { console.error('生徒でログインして、レッスンを開いてから実行してください。'); return; }
-      const base = { lessonId: S.L.lessonId, answers: S.draft };
+      const w = (S.L.words || []).find(x => !S.chk?.items?.['m:' + x.w]?.r);
+      if (!w) { console.error('まだ確かめていない意味調べの単語がありません。'); return; }
+      const t0 = performance.now();
+      const r = await HC.api('checkItem', { lessonId: S.L.lessonId, kind: 'mean', w: w.w, answers: S.draft, mode: 'main' });
+      const ms = Math.round(performance.now() - t0);
+      console.table([{ 確かめた単語: w.w, 結果: r.items['m:' + w.w]?.r === 'o' ? '◯' : '✕', ミリ秒: ms, めやす: ms < 3000 ? 'OK（3秒より速い）' : '遅い（3秒以上）' }]);
+      console.log('画面を開き直すと、結果が出ます。');
+    },
+    /* 提出は1回だけか確かめる（提出がすんだレッスンで使う） */
+    async once() {
+      if (S.auth?.role !== 'student' || !S.L) { console.error('生徒でログインして、レッスンを開いてから実行してください。'); return; }
       const id = () => 'chk-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
       const count = async () => (await HC.api('listAssignments')).lessons.find(l => l.lessonId === S.L.lessonId)?.attempts || 0;
       const before = await count();
-      const t0 = performance.now();
-      const res = await Promise.all([HC.api('submit', { ...base, submissionId: id() }), HC.api('submit', { ...base, submissionId: id() })]);
-      const ms = Math.round(performance.now() - t0);
+      if (!before) { console.error('まだ提出していないレッスンです。提出してから使ってください。'); return; }
+      const res = await Promise.all([HC.api('submit', { lessonId: S.L.lessonId, answers: S.draft, submissionId: id() }), HC.api('submit', { lessonId: S.L.lessonId, answers: S.draft, submissionId: id() })]);
       const after = await count();
-      const attempts = res.map(r => r.attempt).sort((a, b) => a - b);
-      const ok = after === before + 2 && attempts[0] !== attempts[1];
-      console.table([{ 前の提出回数: before, 後の提出回数: after, 今回の回数: attempts.join(' と '), ミリ秒: ms, 結果: ok ? 'OK（どちらも保存された）' : 'NG' }]);
-      const dupId = id();
-      const d = await Promise.all([HC.api('submit', { ...base, submissionId: dupId }), HC.api('submit', { ...base, submissionId: dupId })]);
-      const after2 = await count();
-      console.table([{ 確かめたこと: '同じ提出が2回届いたとき', 増えた回数: after2 - after, 結果: after2 - after === 1 && d[0].attempt === d[1].attempt ? 'OK（1回分だけ保存）' : 'NG' }]);
+      console.table([{ 前の提出回数: before, 後の提出回数: after, 結果: after === before && res.every(r => r.duplicate) ? 'OK（提出はふえない）' : 'NG' }]);
     }
   };
 })();

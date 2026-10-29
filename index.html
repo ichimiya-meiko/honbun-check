@@ -315,19 +315,50 @@ button[disabled]{opacity:.5;cursor:default}
 .posex dt i{width:12px;height:12px;border-radius:3px;background:var(--c);flex:none}
 .posex dd{margin:0;font-size:.92rem}
 @media (max-width:480px){.posex dl div{grid-template-columns:1fr;gap:0}}
+/* ===== v5：1問ずつ確かめる ===== */
+.rmk{display:inline-grid;place-items:center;min-width:28px;height:28px;border-radius:50%;font-weight:700;font-size:.95rem;flex:none}
+.r-o{background:color-mix(in srgb,var(--ok) 18%,transparent);color:var(--ok)}
+.r-t{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+.r-x{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.wd .rmk{position:absolute;top:-10px;left:-6px;min-width:20px;height:20px;font-size:.72rem}
+.wd.lock,.role.lock,.gap.lock{cursor:default}
+.gap.lock::after{background:transparent}
+.gap.on.lock::after{background:var(--sub)}
+.chunk .rmk{margin-top:4px}
+.ckbar{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:10px 0 4px}
+.ckbar .primary,.ck{min-height:44px}
+.xbox{background:color-mix(in srgb,var(--warn) 8%,var(--paper));border:1px solid color-mix(in srgb,var(--warn) 30%,var(--line));border-radius:10px;padding:8px 12px;margin:8px 0}
+.xbox p{margin:2px 0}
+.xbox .oshii{color:var(--warn);font-weight:700}
+.cheer{color:var(--ok);font-weight:700;font-size:.92rem}
+.fixmsg{color:var(--sub);font-size:.9rem}
+.refl{display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-top:6px;font-size:.9rem}
+.refl button{border:1.5px solid var(--line);background:var(--paper);border-radius:999px;padding:4px 12px;min-height:40px}
+.refl button.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.mb{margin-top:8px}
+.mb label{font-family:"Literata",Georgia,serif;font-weight:600;color:var(--p-adj);display:block}
+.mb-row{display:flex;gap:8px;align-items:center}
+.mb-row input{flex:1;min-height:44px;min-width:0}
+.retrybar{background:color-mix(in srgb,var(--focus) 10%,var(--paper));border:1px solid var(--focus);border-radius:10px;padding:8px 12px;margin:0 0 12px;display:flex;gap:10px;align-items:center;justify-content:space-between;flex-wrap:wrap}
+.olist{list-style:none;padding:0;margin:0}
+.olist li{display:flex;gap:8px;align-items:center;padding:6px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.olist .en{font-family:"Literata",Georgia,serif}
+.tagf{font-size:.75rem;border:1px solid var(--line);border-radius:4px;padding:0 6px;color:var(--sub)}
+.tries{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:.92rem;margin:4px 0}
+.pvnote{font-size:.85rem;color:var(--sub);margin:4px 0 0}
 .pvbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
 </style>
 </head>
 <body>
 <header><div class="hin">
-  <div class="brand">本文分析ノート<small>v4</small></div>
+  <div class="brand">本文分析ノート<small>v5</small></div>
   <div class="hright" id="hright"></div>
 </div></header>
 <main id="main"></main>
 
 <script>
 /* ===== 設定 ===== */
-const VERSION=4;
+const VERSION=5;
 /* ↓ GAS を「ウェブアプリ」として公開したときの URL を ' ' の間に貼る（docs/setup.md 手順7） */
 const API_URL='https://script.google.com/macros/s/AKfycbxUiT8hdHzK3Ol4ZKZJT1hFNnyWGQolkUCGVA3amXMKUl_dXqweX0BrD6XMpVfs9Q_j/exec';
 
@@ -410,7 +441,9 @@ const S={
  /* 教室長画面 */
  atab:'lesson',aData:null,aJson:'',aCheck:null,aSave:null,aBusy:false,aMsg:'',aLessonId:'',aDue:'',aSel:new Set(),aIllMsg:'',
  /* 意味調べ（v4） */
- ill:{id:'',status:'',imgs:[]},tap:'',posEx:true
+ ill:{id:'',status:'',imgs:[]},tap:'',posEx:true,
+ /* v5：◯✕ の記録（chk：宿題 ／ rt：解き直し）。mode は 'main'（宿題）か 'retry'（解き直し） */
+ chk:null,rt:null,mode:'main',rdraft:null,chkBusy:'',total:0,latest:null
 };
 const SV={state:'idle',ver:0,savedVer:0,timer:null,inflight:null,again:false};
 function saveLogin(){lsSet(LOGIN_KEY,{classCode:S.classCode,auth:S.auth,tLessonId:S.tLessonId})}
@@ -436,6 +469,14 @@ function chunksFrom(bounds,n){
  const b=[...new Set(bounds)].sort((x,y)=>x-y);const out=[];let st=0;
  for(const g of b){if(g>=st&&g<n-1){out.push([st,g]);st=g+1}}
  out.push([st,n-1]);return out;
+}
+/* 決まった問題の数／問題の数（手順のボタンに出す） */
+function progressCounts(){
+ const L=S.L,R=recNow()||{items:{}};
+ const keysOf=c=>S.mode==='retry'?S.rt.targets.filter(k=>k[0]===c):null;
+ const fmtc=(c,total)=>{const ks=keysOf(c);const n=ks?ks.length:total;const d=ks?ks.filter(k=>R.items[k]?.r).length:Object.entries(R.items).filter(([k,it])=>k[0]===c&&it.r).length;return n?`${d}/${n}`:'－'};
+ const tokens=L.sentences.reduce((t,s)=>t+s.tokens.length,0);
+ return{m:fmtc('m',L.words.length),p:fmtc('p',tokens),c:fmtc('c',Math.max(0,S.total-L.words.length-tokens))};
 }
 function counts(L,a){
  let r=0,rn=0,p=0,pn=0;
@@ -542,16 +583,17 @@ async function goList(){
  render();
 }
 async function openLesson(id){
- Object.assign(S,{screen:'lesson',L:null,draft:null,sub:null,step:1,si:0,showResult:false,submitId:null,error:''});
+ Object.assign(S,{screen:'lesson',L:null,draft:null,sub:null,latest:null,chk:null,rt:null,mode:'main',rdraft:null,step:1,si:0,showResult:false,submitId:null,error:'',chkBusy:''});
  Object.assign(SV,{state:'idle',ver:0,savedVer:0,again:false});
  render();window.scrollTo(0,0);
  try{
   const j=await api('getLessonForStudent',{lessonId:id});
   const L=j.lesson;
   const local=lsGet(draftKey(S.auth.studentId,id));
-  const resend=!!(local?.pending&&local.answers);
+  const resend=!j.latest&&!!(local?.pending&&local.answers);
   S.draft=fitA(L,resend?local.answers:(j.draft||j.latest?.answers||null));
-  S.sub=j.latest?{answers:fitA(L,j.latest.answers),result:j.latest.result,attempt:j.latest.attempt,submittedAt:j.latest.submittedAt}:null;
+  S.chk=j.checks;S.total=j.total;S.rt=j.retry;S.latest=j.latest;
+  S.showResult=!!j.latest;
   S.L=L;S.tool=posSetOf(L)[0].k;S.tap='';
   if(L.lines)loadIll(L.lessonId);
   if(resend)markDirty();
@@ -560,27 +602,172 @@ async function openLesson(id){
 }
 async function backToList(){await flushDraft().catch(()=>{});goList();window.scrollTo(0,0)}
 async function submit(){
- if(S.screen==='preview'){S.sub={answers:clone(S.draft),result:localResult(S.L,S.draft),attempt:1,submittedAt:''};S.showResult=true;window.scrollTo(0,0);return render()}
+ if(S.screen==='preview'){S.latest={rate:S.chk.rate,cats:S.chk.cats,checks:S.chk,submittedAt:''};S.showResult=true;window.scrollTo(0,0);return render()}
  if(S.submitting)return;
  S.submitting=true;S.error='';clearTimeout(SV.timer);render();
+ await flushDraft().catch(()=>{});
  const id=S.submitId||(S.submitId=uuid());
- const ver=SV.ver,answers=clone(S.draft),sid=S.auth.studentId,lid=S.L.lessonId;
+ const answers=clone(S.draft),sid=S.auth.studentId,lid=S.L.lessonId;
  let j=null,err=null;
  for(let i=0;i<3&&!j;i++){
   try{j=await api('submit',{lessonId:lid,submissionId:id,answers})}
-  catch(e){err=e;if(e.code)break;await new Promise(r=>setTimeout(r,1500))}
+  catch(e){err=e;if(e.code||/確かめていない/.test(e.message))break;await new Promise(r=>setTimeout(r,1500))}
  }
  S.submitting=false;
  if(j){
-  S.sub={answers:fitA(S.L,j.answers),result:{rate:j.rate,cats:j.cats,marks:j.marks},attempt:j.attempt,submittedAt:j.submittedAt};
+  S.latest={rate:j.rate,cats:j.cats,checks:j.checks,submittedAt:j.submittedAt,answers:j.answers};
   S.submitId=null;S.showResult=true;
-  SV.savedVer=Math.max(SV.savedVer,ver);
-  if(SV.ver===ver){SV.state='saved';lsSet(draftKey(sid,lid),{answers,pending:false})}
+  lsSet(draftKey(sid,lid),{answers,pending:false});
   window.scrollTo(0,0);
  }else if(err){handleError(err)}
  render();
 }
 
+/* ===== v5：1問ずつ確かめる ===== */
+const MARK={o:'◯',t:'△',x:'✕'};
+const REF={know:'知らなかった',careless:'うっかり',think:'考え方がちがった'};
+const recNow=()=>S.mode==='retry'?S.rt:S.chk;
+const ansNow=()=>S.mode==='retry'?S.rdraft:S.draft;
+const isTarget=k=>S.mode!=='retry'||S.rt.targets.includes(k);
+const itemOf=k=>recNow()?.items?.[k];
+const unitOfKey=k=>k[0]==='m'?k:k.split(':').slice(0,2).join(':');
+const markBadge=r=>r?`<span class="rmk r-${r}" aria-label="${{o:'正解',t:'△',x:'おしい'}[r]}">${MARK[r]}</span>`:'';
+/* ◯ のときの、小さく喜べる一言（問題ごとに決まった言葉を出す） */
+const CHEERS=['やったね！','いいね！','その調子！','すばらしい！','ばっちり！'];
+const cheer=k=>CHEERS[[...String(k)].reduce((t,c)=>t+c.charCodeAt(0),0)%CHEERS.length];
+function meanFixed(w,it,a){return it.r!=='x'||(it.ok||[]).some(k=>(a.meanings[w]||'').includes(k))}
+function posFixed(si,ti,it,a){const v=a.pos[si][ti];return it.r!=='x'||v===it.ans||(it.alt||[]).includes(v)}
+function chunkFixed(it,a){
+ if(it.r!=='x')return true;
+ const n=S.L.sentences[it.si].tokens.length;
+ return chunksFrom(a.bounds[it.si],n).some(c=>c[0]===it.from&&c[1]===it.to)&&a.roles[it.si][it.from+'-'+it.to]===it.role;
+}
+function itemFixed(k,it,a){
+ if(k[0]==='m')return meanFixed(k.slice(2),it,a);
+ if(k[0]==='p'){const[,si,ti]=k.split(':').map(Number);return posFixed(si,ti,it,a)}
+ return chunkFixed(it,a);
+}
+/* 書きかえられない所 */
+function tokLocked(si,ti){
+ const k=`p:${si}:${ti}`;if(!isTarget(k))return true;
+ const it=itemOf(k);if(!it||!it.r)return false;
+ return it.r!=='x'||posFixed(si,ti,it,ansNow());
+}
+function meanLocked(w){
+ const k='m:'+w;if(!isTarget(k))return true;
+ const it=itemOf(k);if(!it||!it.r)return false;
+ return it.r!=='x'||meanFixed(w,it,ansNow());
+}
+function lockedChunks(si){
+ const out=[],a=ansNow();
+ Object.entries(recNow()?.items||{}).forEach(([k,it])=>{if(k.startsWith(`c:${si}:`)&&it.r&&chunkFixed(it,a))out.push(it)});
+ if(S.mode==='retry')(S.rt.prefill.chunks[si]||[]).forEach(c=>out.push(c));
+ return out;
+}
+const gapLocked=(si,g)=>lockedChunks(si).some(c=>(c.from<=g&&g<c.to)||g===c.to||g===c.from-1);
+const roleLocked=(si,k)=>lockedChunks(si).some(c=>c.from+'-'+c.to===k);
+/* まとまり（m:単語 ／ p:文 ／ c:文）の状態：none（問題なし）・todo（まだ確かめていない）・fix（✕ を直す所が残っている）・done */
+function unitHasTarget(u){
+ if(S.mode!=='retry')return true;
+ return S.rt.targets.some(k=>unitOfKey(k)===u);
+}
+function unitState(u){
+ if(!unitHasTarget(u))return 'none';
+ const R=recNow();if(!R)return 'todo';
+ if(!(R.done||[]).includes(u))return 'todo';
+ const a=ansNow();
+ const bad=Object.entries(R.items).some(([k,it])=>unitOfKey(k)===u&&it.r==='x'&&!itemFixed(k,it,a));
+ return bad?'fix':'done';
+}
+function xBox(k,it,ansHtml,fixed){
+ return `<div class="xbox"><p><span class="oshii">おしい！</span>正解は ${ansHtml}</p>${it.why?`<p class="muted">わけ：${esc(it.why)}</p>`:''}
+ ${fixed?'<p class="okc">直せたね ✓</p>':'<p class="fixmsg">正解のとおりに直してみよう。</p>'}
+ <div class="refl"><span>どうしてかな？（えらばなくても進めます）</span>${Object.entries(REF).map(([f,lab])=>`<button class="${it.f===f?'on':''}" data-act="refl" data-k="${esc(k)}" data-f="${f}">${lab}</button>`).join('')}</div></div>`;
+}
+function ckBtn(kind,arg,label){
+ const u=kind==='mean'?'m:'+arg:(kind==='pos'?'p:':'c:')+arg,busy=S.chkBusy===u;
+ return `<button class="primary ck" data-act="ck" data-kind="${kind}" data-v="${esc(arg)}" ${S.chkBusy?'disabled':''}>${busy?'確かめています…':label}</button>`;
+}
+async function doCheck(kind,arg){
+ if(S.chkBusy)return;
+ const u=kind==='mean'?'m:'+arg:(kind==='pos'?'p:':'c:')+arg;
+ S.chkBusy=u;S.error='';render();
+ try{
+  const payload={lessonId:S.L.lessonId,kind,answers:ansNow(),mode:S.mode};
+  if(kind==='mean')payload.w=arg;else payload.si=+arg;
+  const j=S.screen==='preview'?localCheck(payload):await api('checkItem',payload);
+  const R=recNow();
+  Object.assign(R.items,j.items);
+  R.done=R.done||[];if(j.done&&!R.done.includes(u))R.done.push(u);
+  if(j.progress){R.rate=j.progress.rate;R.cats=j.progress.cats}
+  if(S.mode==='retry'&&j.finishedAt)S.rt.finishedAt=j.finishedAt;
+  if(S.screen!=='preview')markDirty();
+ }catch(e){handleError(e)}
+ S.chkBusy='';render();
+}
+async function doReflect(k,f){
+ const it=itemOf(k);if(!it)return;
+ const before=it.f;it.f=f;render();
+ if(S.screen==='preview')return;
+ try{await api('reflect',{lessonId:S.L.lessonId,key:k,f,mode:S.mode});markDirty()}
+ catch(e){it.f=before;handleError(e);render()}
+}
+/* 解き直し */
+function buildRetryDraft(){
+ const L=S.L,a=blankA(L),R=S.rt;
+ Object.entries(R.prefill.pos).forEach(([k,v])=>{const[si,ti]=k.split(':').map(Number);a.pos[si][ti]=v});
+ L.sentences.forEach((s,si)=>{
+  const list=(R.prefill.chunks[si]||[]).concat(Object.entries(R.items).filter(([k,it])=>k.startsWith(`c:${si}:`)&&it.r).map(([,it])=>it));
+  const b=new Set();
+  list.forEach(c=>{if(c.from>0)b.add(c.from-1);if(c.to<s.tokens.length-1)b.add(c.to);a.roles[si][c.from+'-'+c.to]=c.role});
+  a.bounds[si]=[...b];
+ });
+ Object.entries(R.items).forEach(([k,it])=>{if(k[0]==='p'&&it.r){const[,si,ti]=k.split(':').map(Number);a.pos[si][ti]=it.ans}});
+ return a;
+}
+function firstRetryStep(){
+ const t=S.rt.targets;
+ if(t.some(k=>k[0]==='m'))return 1;
+ if(t.some(k=>k[0]==='c'))return 2;
+ return 3;
+}
+function enterRetry(){
+ S.mode='retry';S.rdraft=buildRetryDraft();S.showResult=false;S.step=firstRetryStep();S.si=retrySents(S.step===2?'c':'p')[0]??0;window.scrollTo(0,0);
+}
+async function startRetry(){
+ S.busy=true;S.error='';render();
+ try{const j=await api('startRetry',{lessonId:S.L.lessonId});S.rt=j.retry;enterRetry()}catch(e){handleError(e)}
+ S.busy=false;render();
+}
+const retrySents=kind=>S.L.sentences.map((_,si)=>si).filter(si=>unitHasTarget(kind+':'+si));
+/* 教室長のプレビュー：GAS を使わずに、同じ決まりで確かめる（教室長は答えを持っているので） */
+function localCheck(q){
+ const L=S.L,R=S.chk,full=S.pvFull=S.pvFull||{},a=q.answers,items={};
+ const judge=(k,ok)=>{const it=full[k]=full[k]||{};if(!it.r)it.r=ok?'o':'x';return it};
+ const pub=(k,it,extra)=>Object.assign({r:it.r},it.r==='x'?extra:{},it.r&&k[0]==='p'?{ans:extra.ans}:{},k[0]==='c'&&it.r?{si:extra.si,from:extra.from,to:extra.to,role:extra.role}:{});
+ let unit;
+ if(q.kind==='mean'){
+  const w=L.words.find(x=>x.w===q.w),k='m:'+w.w;unit=k;
+  const v=(a.meanings[w.w]||'').trim(),it=judge(k,!!v&&(w.ok||[]).some(o=>v.includes(o)));
+  items[k]=pub(k,it,{ans:w.example||(w.ok||[])[0]||'',ok:w.ok||[],why:w.why||''});
+ }else if(q.kind==='pos'){
+  const si=q.si,s=L.sentences[si];unit='p:'+si;
+  s.tokens.forEach((tk,ti)=>{const k=`p:${si}:${ti}`,v=a.pos[si][ti]||'',it=judge(k,posOk(tk,v));items[k]=pub(k,it,{ans:tk.pos,alt:tk.alt||[],why:tk.why||''})});
+ }else{
+  const si=q.si,s=L.sentences[si];unit='c:'+si;
+  const mine=chunksFrom(a.bounds[si],s.tokens.length).map(c=>({from:c[0],to:c[1],role:a.roles[si][c[0]+'-'+c[1]]||''}));
+  s.chunks.forEach(c=>{const k=`c:${si}:${c.from}-${c.to}`,same=mine.find(m=>m.from===c.from&&m.to===c.to);
+   const it=judge(k,!!same&&same.role===c.role);
+   items[k]=pub(k,it,{si,from:c.from,to:c.to,role:c.role,why:c.why||''});
+  });
+ }
+ const keys=[...L.words.map(w=>'m:'+w.w),...L.sentences.flatMap((s,si)=>[...s.chunks.map(c=>`c:${si}:${c.from}-${c.to}`),...s.tokens.map((_,ti)=>`p:${si}:${ti}`)])];
+ const uk=k=>unitOfKey(k);
+ const done=keys.filter(k=>uk(k)===unit).every(k=>full[k]?.r);
+ const cats={};['意味','かたまり','品詞'].forEach(c=>cats[c]={n:0,hit:0,o:0,t:0,x:0});
+ let o=0;keys.forEach(k=>{const c=cats[k[0]==='m'?'意味':k[0]==='c'?'かたまり':'品詞'],r=full[k]?.r;c.n++;if(r==='o'){c.o++;c.hit++;o++}else if(r==='t')c.t++;else if(r==='x')c.x++});
+ return{unit,items,done,progress:{rate:Math.round(o/keys.length*100),cats}};
+}
 /* 講師 */
 async function loadTeacher(){
  S.screen='teacher';S.error='';render();
@@ -656,22 +843,23 @@ function listView(){
  if(!S.lessons)return h+loadingView();
  if(!S.lessons.length)return h+`<div class="card"><p>配られた宿題はまだありません。先生に伝えてください。</p></div>`;
  return h+S.lessons.map(l=>{
-  const st=l.attempts?(l.checked?`<span class="st done">先生がチェックしました</span>`:`<span class="st done">提出ずみ（${l.attempts}回目・${l.rate}%）</span>`):l.hasDraft?`<span class="st wait">とちゅう</span>`:`<span class="st none">まだ</span>`;
+  const st=l.attempts?(l.checked?`<span class="st done">先生がチェックしました</span>`:`<span class="st done">提出ずみ（◯ ${l.rate}%）</span>`):l.hasDraft?`<span class="st wait">とちゅう</span>`:`<span class="st none">まだ</span>`;
   return `<button class="card lcard" data-act="open" data-v="${esc(l.lessonId)}"><span><span class="unit">${esc(l.note)}</span><b>${esc(l.title)}</b>${l.source?`<span class="src">${esc(l.source)}</span>`:''}${l.dueDate?`<span class="muted">期限 ${esc(fmtDate(l.dueDate))}</span>`:''}</span>${st}</button>`;
  }).join('');
 }
 function studentView(){
- const L=S.L,a=S.draft,r=S.sub;
+ const L=S.L,a=ansNow(),r=S.latest;
  const pv=S.screen==='preview';
  let h=pv?`<div class="pvbar"><p class="banner" style="margin:0">プレビュー中です。生徒にはこう見えます。入力しても保存されません。</p><button class="secondary" data-act="pvback">教室長画面にもどる</button></div>`:'';
  h+=`<section class="lhead"><div><p class="unit">${esc(L.title)}${L.note?`<span class="tag">${esc(L.note)}</span>`:''}</p>${srcLine(L.source)}<h1>本文分析ノート</h1></div>
  ${pv?'':'<button class="secondary" data-act="back">一覧にもどる</button>'}</section>`;
  if(r&&S.showResult)return h+resultView(r);
- const c=counts(L,a);
- const steps=[['意味調べ',`${c.m}/${c.mn}`],['かたまり',`${c.r}/${c.rn}`],['品詞',`${c.p}/${c.pn}`],['提出','']];
+ if(!recNow())return h+loadingView();
+ const c=progressCounts();
+ const steps=S.mode==='retry'?[['意味調べ',c.m],['かたまり',c.c],['品詞',c.p],['おわり','']]:[['意味調べ',c.m],['かたまり',c.c],['品詞',c.p],['提出','']];
+ if(S.mode==='retry')h+=`<div class="retrybar"><span><b>解き直し中</b>　宿題で ✕ だった問題だけを、もう一度解きます。宿題の ◯✕ と正答率は変わりません。</span><button class="secondary" data-act="endretry">結果にもどる</button></div>`;
  h+=`<nav class="steps" aria-label="手順">${steps.map((s,i)=>`<button data-act="step" data-v="${i+1}" aria-current="${S.step===i+1?'step':'false'}"><span class="num">${i+1}</span><span class="lab">${s[0]}</span><span class="cnt">${s[1]}</span></button>`).join('')}</nav>`;
- if(r&&!pv)h+=`<p class="banner">${esc(fmt(r.submittedAt))} に提出しました（${r.attempt}回目）。直してもう一度提出することもできます。<button class="linkbtn" data-act="showres">結果を見る</button></p>`;
- return h+[step1,step2,step3,step4][S.step-1](a);
+ return h+[step1,step2,step3,S.mode==='retry'?stepRetryEnd:step4][S.step-1](a);
 }
 /* ===== 意味調べ（v4）：挿絵・せりふ・訳 ===== */
 /* 挿絵を読みこむ。文字は先に出し、絵は届いたところだけ書きかえる（入力中の欄を消さないため） */
@@ -709,8 +897,31 @@ function lineEn(l,li,tappable){
  });
  return h+esc(l.text.slice(pos));
 }
+/* 新出単語の欄と「確かめる」 */
+function meanBox(w,a,idp){
+ const k='m:'+w,it=itemOf(k)||{},lock=meanLocked(w);
+ let h=`<div class="mb"><label for="${idp}">${esc(w)}</label><div class="mb-row"><input id="${idp}" type="text" data-in="meaning" data-w="${esc(w)}" value="${esc(a.meanings[w]||'')}" placeholder="意味を書こう" autocomplete="off" ${lock?'disabled':''}>`;
+ h+=it.r?markBadge(it.r):ckBtn('mean',w,'確かめる');
+ h+='</div>';
+ if(it.r==='o'||it.r==='t')h+=`<p class="cheer">${cheer(k)}</p>`;
+ if(it.r==='x')h+=xBox(k,it,`「${esc(it.ans)}」`,meanFixed(w,it,a));
+ return h+'</div>';
+}
+/* 解き直しの意味調べ：解き直しの単語だけ、文といっしょに出す */
+function step1Retry(a){
+ const L=S.L,ws=L.words.filter(w=>isTarget('m:'+w.w));
+ if(!ws.length)return `<div class="card"><p>意味調べの解き直しはありません。</p></div>`+nextBtn(2,'次へ：かたまり');
+ let h=`<p class="guide">もう一度、この文の中での意味を考えよう。</p>`;
+ ws.forEach((w,i)=>{
+  const s=L.sentences[w.sentence];
+  const ctx=s?spkIn(s)+s.tokens.map((t,ti)=>(ti&&!t.glue?' ':'')+(t.w.toLowerCase()===w.w.toLowerCase()?`<b>${esc(t.w)}</b>`:esc(t.w))+pn(t)).join('')+esc(s.end):'';
+  h+=`<div class="card"><p class="ctx">${ctx}</p>${meanBox(w.w,a,'rm-'+i)}</div>`;
+ });
+ return h+nextBtn(2,'次へ：かたまり');
+}
 function step1(a){
  const L=S.L;
+ if(S.mode==='retry')return step1Retry(a);
  if(!L.lines)return step1Old(a);
  /* 新出単語（gloss の new）を words の単語に結びつける。大文字・小文字は区別しない */
  const wkey=w=>(L.words.find(x=>x.w.toLowerCase()===w.toLowerCase())||{w}).w;
@@ -724,7 +935,7 @@ function step1(a){
   ${tg?`<p class="gl-pop"><b>${esc(tg.w)}</b>${tg.new?'新出単語（調べてみよう）。意味は下の欄に書こう。':tg.hide?'新出単語（調べてみよう）':esc(tg.ja)}</p>`:''}
   <p class="ln-ja">${jaHtml(l.ja,false)}</p>`;
   const news=(l.gloss||[]).filter(g=>g.new&&first[wkey(g.w)]===li).map(g=>wkey(g.w)).filter((w,i,arr)=>arr.indexOf(w)===i);
-  if(news.length)h+=`<div class="ln-new">${news.map((w,i)=>`<label for="m-${li}-${i}">${esc(w)}</label><input id="m-${li}-${i}" type="text" data-in="meaning" data-w="${esc(w)}" value="${esc(a.meanings[w]||'')}" placeholder="意味を書こう" autocomplete="off">`).join('')}</div>`;
+  if(news.length)h+=news.map((w,i)=>meanBox(w,a,`m-${li}-${i}`)).join('');
   h+='</div>';
  });
  return h+nextBtn(2,'次へ：かたまりに分ける');
@@ -744,20 +955,42 @@ function step1Old(a){
  L.words.forEach(w=>{
   const s=L.sentences[w.sentence];
   const ctx=s?spkIn(s)+s.tokens.map((t,i)=>(i&&!t.glue?' ':'')+(t.w.toLowerCase()===w.w.toLowerCase()?`<b>${esc(t.w)}</b>`:esc(t.w))+pn(t)).join('')+esc(s.end):'';
-  h+=`<div class="card mrow"><div><div class="en">${esc(w.w)}</div><p class="ctx">${ctx}</p></div>
-  <input type="text" data-in="meaning" data-w="${esc(w.w)}" value="${esc(a.meanings[w.w]||'')}" placeholder="意味を書こう" aria-label="${esc(w.w)} の意味"></div>`;
+  h+=`<div class="card"><p class="ctx">${ctx}</p>${meanBox(w.w,a,'om-'+w.w.replace(/\W/g,''))}</div>`;
  });
  return h+nextBtn(2,'次へ：かたまりに分ける');
 }
 function sentNav(kind,a){
- return `<div class="snav" aria-label="文の切り替え">${S.L.sentences.map((x,si)=>{
-  const done=kind==='pos'?a.pos[si].every(Boolean):chunksFrom(a.bounds[si],x.tokens.length).every(c=>a.roles[si][c[0]+'-'+c[1]]);
-  return `<button data-act="sent" data-v="${si}" aria-current="${S.si===si?'true':'false'}" class="${done?'done':''}">文${si+1}${done?' ✓':''}</button>`}).join('')}</div>`;
+ const u=kind==='pos'?'p':'c';
+ const list=S.L.sentences.map((_,si)=>si).filter(si=>unitHasTarget(u+':'+si));
+ return `<div class="snav" aria-label="文の切り替え">${list.map(si=>{
+  const st=unitState(u+':'+si);
+  return `<button data-act="sent" data-v="${si}" aria-current="${S.si===si?'true':'false'}" class="${st==='done'?'done':''}">文${si+1}${st==='done'?' ✓':st==='fix'?' ・':''}</button>`}).join('')}</div>`;
 }
-function pager(nextStep,label){
- const si=S.si,n=S.L.sentences.length;
- return `<div class="pager"><button class="secondary" data-act="sent" data-v="${si-1}" ${si===0?'disabled':''}>前の文</button>
- ${si<n-1?`<button class="primary" data-act="sent" data-v="${si+1}">次の文（文${si+2}）へ</button>`:`<button class="primary" data-act="step" data-v="${nextStep}">${label}</button>`}</div>`;
+/* 前の文／次の文。次へ進めるのは、その文の問題が全部決まって、✕ を直してふり返りも選んだとき */
+function pager(nextStep,label,kind){
+ const u=kind==='pos'?'p':'c';
+ const list=S.L.sentences.map((_,si)=>si).filter(si=>unitHasTarget(u+':'+si));
+ const i=list.indexOf(S.si),st=unitState(u+':'+S.si),ok=st==='done'||st==='none';
+ const prev=i>0?list[i-1]:null,next=i<list.length-1?list[i+1]:null;
+ return `<div class="pager"><button class="secondary" data-act="sent" data-v="${prev??-1}" ${prev===null?'disabled':''}>前の文</button>
+ ${next!==null?`<button class="primary" data-act="sent" data-v="${next}" ${ok?'':'disabled'}>次の文（文${next+1}）へ</button>`:`<button class="primary" data-act="step" data-v="${nextStep}" ${ok?'':'disabled'}>${label}</button>`}</div>
+ ${ok?'':`<p class="pvnote" style="text-align:right">${st==='fix'?'正解のとおりに直すと、次へ進めます。':'「この文を確かめる」を押すと、次へ進めます。'}</p>`}`;
+}
+/* 文の「確かめる」と、✕ の答え */
+function sentCheck(kind,si,a){
+ const u=(kind==='pos'?'p:':'c:')+si,R=recNow(),st=unitState(u),L=S.L;
+ const mine=Object.entries(R?.items||{}).filter(([k])=>unitOfKey(k)===u&&isTarget(k));
+ let h='';
+ if(st!=='todo'&&st!=='none'&&mine.length){
+  const nx=mine.filter(([,it])=>it.r==='x').length;
+  h+=!nx?`<p class="cheer">${cheer(u)} この文は全部正解！</p>`:st==='done'?`<p class="cheer">直せたね！ 次の文へ進もう。</p>`:`<p class="cheer" style="color:var(--warn)">おしい！ ${nx}か所だけ、正解とちがったよ。下の正解を見て直してみよう。</p>`;
+ }
+ mine.filter(([,it])=>it.r==='x').forEach(([k,it])=>{
+  if(kind==='pos'){const ti=+k.split(':')[2];h+=xBox(k,it,`<b class="en">${esc(L.sentences[si].tokens[ti].w)}</b> は「${esc(posName(it.ans))}」${(it.alt||[]).length?`（${esc(it.alt.map(posName).join('・'))}でも正解）`:''}`,posFixed(si,ti,it,a))}
+  else h+=xBox(k,it,`<b class="en">[${esc(words(L,si,it.from,it.to))}]</b> は「${esc(it.role)}」`,chunkFixed(it,a));
+ });
+ if(st==='todo')h+=`<div class="ckbar">${ckBtn(kind==='pos'?'pos':'chunk',si,'この文を確かめる')}</div>`;
+ return h;
 }
 /* 中1の「区切り方のポイント」 */
 const CHUNK_TIPS_1=['まず V（動詞）をさがす。','V の前は S になることが多い。','残りは、接続詞（and、but など）と前置詞（in、at、to など）の前で区切る。'];
@@ -766,23 +999,27 @@ function chunkTips(L){
  return `<div class="tips"><b>区切り方のポイント</b><ul>${CHUNK_TIPS_1.map(t=>`<li>${esc(t)}</li>`).join('')}</ul></div>`;
 }
 function step2(a){
+ if(S.mode==='retry'){const l=retrySents('c');if(!l.length)return `<div class="card"><p>かたまりの解き直しはありません。</p></div>`+nextBtn(3,'次へ：品詞');if(!l.includes(S.si))S.si=l[0]}
  const si=S.si;
  let h=`<p class="guide">単語のあいだの点をタップすると区切り線が入ります。区切ったら、下のラベルをタップして役割を選ぼう。</p>${chunkTips(S.L)}
  <div class="legend">${roleSetOf(S.L).map(r=>ROLE_LEGEND[r]?`<span><b style="background:var(${ROLE_LEGEND[r][0]})">${esc(r)}</b>${ROLE_LEGEND[r][1]}</span>`:'').join('')}</div>`;
  h+=sentNav('chunk',a)+`<div class="card big"><div class="sno">文 ${si+1} / ${S.L.sentences.length}</div>${spk(S.L.sentences[si])}<div class="line">${chunkLine(si,a)}</div></div>`;
- return h+pager(3,'次へ：品詞をつける');
+ return h+sentCheck('chunk',si,a)+pager(3,S.mode==='retry'?'次へ：品詞':'次へ：品詞をつける','chunk');
 }
 function chunkLine(si,a){
  const s=S.L.sentences[si],n=s.tokens.length,ch=chunksFrom(a.bounds[si],n);let h='';
+ const R=recNow();
+ const resolved=Object.entries(R?.items||{}).filter(([k,it])=>k.startsWith(`c:${si}:`)&&it.r).map(([,it])=>it);
  ch.forEach((c,ci)=>{
-  const k=c[0]+'-'+c[1],role=a.roles[si][k]||'';
+  const k=c[0]+'-'+c[1],role=a.roles[si][k]||'',rl=roleLocked(si,k);
+  const res=resolved.find(it=>it.from===c[0]&&it.to===c[1]&&it.role===role);
   h+=`<span class="chunk"><span class="cw">`;
   for(let t=c[0];t<=c[1];t++){
    h+=`<span class="w">${esc(s.tokens[t].w)}${pn(s.tokens[t])}${t===n-1?esc(s.end):''}</span>`;
-   if(t<c[1])h+=`<button class="gap" data-act="gap" data-s="${si}" data-g="${t}" aria-label="${esc(s.tokens[t].w)} のあとで区切る"></button>`;
+   if(t<c[1]){const lk=gapLocked(si,t);h+=`<button class="gap ${lk?'lock':''}" data-act="gap" data-s="${si}" data-g="${t}" ${lk?'disabled':''} aria-label="${esc(s.tokens[t].w)} のあとで区切る"></button>`}
   }
-  h+=`</span><button class="role ${role?'set':''}" data-act="role" data-s="${si}" data-k="${k}" data-r="${role}">${role||'選ぶ'}</button></span>`;
-  if(ci<ch.length-1)h+=`<button class="gap on" data-act="gap" data-s="${si}" data-g="${c[1]}" aria-label="区切りを外す"></button>`;
+  h+=`</span><button class="role ${role?'set':''} ${rl?'lock':''}" data-act="role" data-s="${si}" data-k="${k}" data-r="${role}" ${rl?'disabled':''}>${role||'選ぶ'}</button>${res?markBadge(res.r):''}</span>`;
+  if(ci<ch.length-1){const lk=gapLocked(si,c[1]);h+=`<button class="gap on ${lk?'lock':''}" data-act="gap" data-s="${si}" data-g="${c[1]}" ${lk?'disabled':''} aria-label="区切りを外す"></button>`}
  });
  return h;
 }
@@ -809,6 +1046,7 @@ function posExamples(L){
  return `<details class="posex" data-keep="posex" ${S.posEx?'open':''}><summary>品詞の例</summary><dl>${list.map(p=>`<div><dt style="--c:var(${p.v})"><i></i>${esc(p.name)}</dt><dd>${esc(POS_EX[p.k])}</dd></div>`).join('')}</dl></details>`;
 }
 function step3(a){
+ if(S.mode==='retry'){const l=retrySents('p');if(!l.length)return `<div class="card"><p>品詞の解き直しはありません。</p></div>`+nextBtn(4,'次へ：おわり');if(!l.includes(S.si))S.si=l[0]}
  const si=S.si,x=S.L.sentences[si];
  if(!['?','x'].includes(S.tool)&&!posSetOf(S.L).some(p=>p.k===S.tool))S.tool=posSetOf(S.L)[0].k;
  let h=`<p class="guide">色を選んでから単語をタップ。わからない単語には「？ わからない」をつけておこう。</p>`;
@@ -817,8 +1055,9 @@ function step3(a){
  <p class="pal-ex" aria-live="polite">${toolHint(S.tool)}</p></div>`;
  h+=sentNav('pos',a);
  h+=`<div class="card big"><div class="sno">文 ${si+1} / ${S.L.sentences.length}　<span class="muted">${a.pos[si].filter(Boolean).length} / ${x.tokens.length} 語</span></div>${spk(x)}<div class="wline">${x.tokens.map((tk,ti)=>{const p=a.pos[si][ti],q=a.q[si+'-'+ti];
-  return `<button class="wd ${p?'has':''} ${tk.glue?'gl':''}" data-act="word" data-s="${si}" data-t="${ti}" style="--c:${p?posVar(p):'var(--line)'}"><span class="en">${esc(tk.w)}</span><span class="pl">${p?posName(p):'－'}</span>${q?'<span class="qb">？</span>':''}</button>${tk.punct?`<span class="pn">${pn(tk)}</span>`:''}`}).join('')}<span class="end">${esc(x.end)}</span></div></div>`;
- return h+pager(4,'次へ：提出する')+posExamples(S.L);
+  const it=itemOf(`p:${si}:${ti}`),lk=tokLocked(si,ti);
+  return `<button class="wd ${p?'has':''} ${tk.glue?'gl':''} ${lk?'lock':''}" data-act="word" data-s="${si}" data-t="${ti}" style="--c:${p?posVar(p):'var(--line)'}"><span class="en">${esc(tk.w)}</span><span class="pl">${p?posName(p):'－'}</span>${q?'<span class="qb">？</span>':''}${it?.r&&isTarget(`p:${si}:${ti}`)?markBadge(it.r):''}</button>${tk.punct?`<span class="pn">${pn(tk)}</span>`:''}`}).join('')}<span class="end">${esc(x.end)}</span></div></div>`;
+ return h+sentCheck('pos',si,a)+pager(4,S.mode==='retry'?'次へ：おわり':'次へ：提出する','pos')+posExamples(S.L);
 }
 /* 選んでいる品詞の例（1行） */
 function toolHint(k){
@@ -827,23 +1066,68 @@ function toolHint(k){
  return `<b>${esc(posName(k))}</b>：${esc(POS_EX[k]||'')}`;
 }
 function step4(a){
- const c=counts(S.L,a),rest=(c.mn-c.m)+(c.rn-c.r)+(c.pn-c.p);
- const li=(lab,x,n)=>`<li><span>${lab}</span><span class="${x===n?'ok':'ng'}">${x} / ${n}</span></li>`;
- return `<div class="card"><h2>提出の前に確認しよう</h2><ul class="check">${li('意味調べ',c.m,c.mn)}${li('かたまりの役割',c.r,c.rn)}${li('品詞',c.p,c.pn)}<li><span>？をつけた単語</span><span>${Object.keys(a.q).length} 個</span></li></ul>
- ${rest?`<p class="muted">まだ空いている所が ${rest} 個あります。このまま提出もできますが、空いている所は不正解になります。</p>`:`<p class="muted">全部うまったね。よく顔晴りました！</p>`}
+ const R=S.chk,L=S.L;
+ const units=[...L.words.map(w=>'m:'+w.w),...L.sentences.flatMap((_,si)=>['c:'+si,'p:'+si])];
+ const st=units.map(u=>[u,unitState(u)]);
+ const left=st.filter(([,x])=>x==='todo').length,fix=st.filter(([,x])=>x==='fix').length;
+ const cats=R.cats||{};
+ const row=lab=>{const c=cats[lab==='意味調べ'?'意味':lab]||{n:0,o:0,t:0,x:0};const d=c.o+c.t+c.x;return `<li><span>${lab}</span><span>${markBadge('o')} ${c.o+c.t}　${markBadge('x')} ${c.x}　<span class="${d===c.n?'ok':'ng'}">${d} / ${c.n}</span></span></li>`};
+ const ready=!left&&!fix;
+ return `<div class="card"><h2>提出の前に確認しよう</h2><ul class="check">${row('意味調べ')}${row('かたまり')}${row('品詞')}<li><span>？をつけた単語</span><span>${Object.keys(a.q).length} 個</span></li></ul>
+ ${ready?`<p class="muted">全部の問題が決まったね。今の ◯ の割合は ${R.rate??0}% です。提出は1回だけです。</p>`
+  :`<p class="fixmsg">${left?`まだ「確かめる」を押していない所が ${left} か所あります。`:''}${fix?`正解のとおりに直す所が ${fix} か所あります。`:''}</p><p class="muted">全部終わると提出できます。</p>`}
  <label for="memo"><b>先生に聞きたいこと</b>（なくてもOK）</label>
  <textarea id="memo" data-in="memo" placeholder="例：told のあとの her が何かわからない">${esc(a.memo)}</textarea>
- <p><button class="primary" data-act="submit" ${S.submitting?'disabled':''}>${S.submitting?'送っています…':'提出する'}</button></p></div>`;
+ <p><button class="primary" data-act="submit" ${S.submitting||!ready?'disabled':''}>${S.submitting?'送っています…':'提出する（1回だけ）'}</button></p></div>`;
+}
+/* 解き直しのおわり */
+function stepRetryEnd(){
+ const R=S.rt,t=R.targets,c={o:0,t:0,x:0};
+ t.forEach(k=>{const r=R.items[k]?.r;if(r)c[r]++});
+ const left=t.length-c.o-c.t-c.x;
+ return `<div class="card"><h2>解き直し</h2><p>${markBadge('o')} ${c.o+c.t}　${markBadge('x')} ${c.x}　（${t.length}問中）</p>
+ ${left?`<p class="fixmsg">まだ ${left} 問のこっています。</p>`:`<p class="okc">解き直しが終わりました！ よくがんばったね。</p>`}
+ <p><button class="primary" data-act="endretry">結果にもどる</button></p></div>`;
 }
 const nextBtn=(n,t)=>`<p><button class="secondary" data-act="step" data-v="${n}">${t}</button></p>`;
 
+/* 問題の名前（生徒・講師に見せる文字） */
+function itemLabel(L,k){
+ if(k[0]==='m')return `<b class="en">${esc(k.slice(2))}</b>`;
+ const[,si,rest]=k.split(':');
+ if(k[0]==='p')return `<b class="en">${esc(L.sentences[+si].tokens[+rest].w)}</b><span class="muted">（文${+si+1}）</span>`;
+ const[f,t]=rest.split('-').map(Number);
+ return `<b class="en">[${esc(words(L,+si,f,t))}]</b><span class="muted">（文${+si+1}）</span>`;
+}
 function resultView(r){
+ const L=S.L;
+ if(!r.checks)return resultViewOld(r);
+ const C=r.cats||{},items=r.checks.items||{};
+ const msg=r.rate>=90?'すばらしい！ほとんど全部正解です。':r.rate>=70?'いい調子です。✕ の問題は、解き直しでもう一度練習しよう。':'よくがんばったね。✕ の問題は、解き直しでもう一度練習しよう。わからない所は授業で先生と一緒に確認します。';
+ let h=`<div class="card"><div class="score"><div class="big">${r.rate}<small>%</small></div><div><p style="margin:0 0 4px;font-weight:700">${msg}</p>
+ <p class="pvnote" style="margin:0 0 4px">数字は ◯ の割合です。</p>
+ <div class="cats">${['意味','かたまり','品詞'].map(k=>{const v=C[k]||{};return `<span>${k} ${markBadge('o')}<b>${v.o||0}</b> ${markBadge('x')}<b>${(v.x||0)+(v.t||0)}</b></span>`}).join('')}</div></div></div>`;
+ const tx=Object.entries(items).filter(([,it])=>it.r==='t'||it.r==='x');
+ const R=S.rt;
+ if(tx.length&&S.screen!=='preview'){
+  if(!R)h+=`<p><button class="primary" data-act="startretry" ${S.busy?'disabled':''}>解き直し（✕ の ${tx.length} 問）</button></p>`;
+  else{
+   const c={o:0,t:0,x:0};R.targets.forEach(k=>{const x=R.items[k]?.r;if(x)c[x]++});
+   h+=`<div class="banner" style="margin-top:8px">解き直し：${markBadge('o')} ${c.o+c.t}　${markBadge('x')} ${c.x}（${R.targets.length}問中）${R.finishedAt?'　終わりました ✓':'　とちゅうです'}
+   <p style="margin:6px 0 0"><button class="primary" data-act="contretry">${R.finishedAt?'見直す':'続きをする'}</button> <button class="secondary" data-act="startretry" ${S.busy?'disabled':''}>はじめから解き直す</button></p></div>`;
+  }
+ }
+ h+='</div>';
+ if(tx.length){
+  const order=k=>k[0]==='m'?0:k[0]==='c'?1:2;
+  h+=`<div class="card"><h2>✕ の問題</h2><ul class="olist">${tx.sort((a,b)=>order(a[0])-order(b[0])).map(([k,it])=>`<li>${markBadge(it.r)}<span class="tagf">${k[0]==='m'?'意味':k[0]==='c'?'かたまり':'品詞'}</span>${itemLabel(L,k)}${it.f?`<span class="tagf">${REF[it.f]}</span>`:''}${R?.items?.[k]?.r?`<span class="muted">解き直し ${markBadge(R.items[k].r)}</span>`:''}</li>`).join('')}</ul></div>`;
+ }else h+=`<div class="card"><p class="okc">全部 ◯ です！</p></div>`;
+ return h;
+}
+function resultViewOld(r){
  const g=r.result,a=r.answers,L=S.L,M=g.marks;
- const msg=g.rate>=90?'すばらしい！ほぼ完ぺきです。':g.rate>=70?'いい調子です。✗の所だけもう一度考えてみよう。':'✗の所を、もう一度考えてみよう。わからない所は授業で先生と一緒に確認します。';
- let h=`<div class="card"><div class="score"><div class="big">${g.rate}<small>%</small></div><div><p style="margin:0 0 4px;font-weight:700">${msg}</p>
- <div class="cats">${Object.entries(g.cats).map(([k,v])=>`<span>${k} <b>${v.hit}/${v.n}</b></span>`).join('')}</div></div></div>
- <p class="muted">答えはまだ表示しません。自分で気づけたときが一番力になります。</p>
- <p><button class="primary" data-act="retry">直して再提出する</button></p></div>`;
+ let h=`<div class="card"><div class="score"><div class="big">${g.rate}<small>%</small></div><div><p style="margin:0 0 4px;font-weight:700">前の形で提出した宿題です。</p>
+ <div class="cats">${Object.entries(g.cats).map(([k,v])=>`<span>${k} <b>${v.hit}/${v.n}</b></span>`).join('')}</div></div></div></div>`;
  const J={pos:(si,ti)=>!!M.tok[si]?.[ti],chunk:(si,x,y)=>M.grp[si]?.[x+'-'+y]===true};
  L.sentences.forEach((s,si)=>{h+=`<div class="card"><div class="sno">文 ${si+1}</div>${reviewLine(L,si,a,J)}</div>`});
  h+=meaningTable(L.words.map(w=>({w:w.w,ans:(a.meanings[w.w]||'').trim(),ok:!!M.mean[w.w]})),false);
@@ -901,20 +1185,22 @@ function teacherView(){
  if(S.tLessons&&!ls.length)return h+`<div class="card"><p>レッスンがまだ登録されていません。教室長画面の「レッスン登録」から入れてください。</p></div>`;
  if(!T||T.lesson.lessonId!==S.tLessonId)return h+loadingView();
  const L=T.lesson;
- const rows=T.students.map(s=>({s,r:s.latest,g:s.latest?grade(L,s.latest.answers):null}));
+ /* v5 の提出（checks あり）は、◯ の割合をそのまま使う。v4 までの提出は、今までどおりその場で採点する */
+ const rows=T.students.map(s=>{const r=s.latest;const g=r?(r.checks?{rate:r.rate,cats:r.cats,v5:true}:grade(L,r.answers)):null;return{s,r,g}});
  const subs=rows.filter(x=>x.g);
  const avg=subs.length?Math.round(subs.reduce((t,x)=>t+x.g.rate,0)/subs.length):0;
  const chk=subs.filter(x=>x.r.checkedAt).length;
  const qn=subs.reduce((t,x)=>t+Object.keys(x.r.answers.q).length,0);
- h+=`<div class="stats"><div>提出<b>${subs.length} / ${rows.length}人</b></div><div>平均正答率<b>${avg}%</b></div><div>講師チェック済み<b>${chk} / ${subs.length}人</b></div><div>？の数<b>${qn}個</b></div></div>
- <div class="tw"><table class="roster"><thead><tr><th>生徒</th><th>状況</th><th>正答率（線＝70%）</th><th>意味・かたまり・品詞</th><th>？</th><th>提出回数</th><th>チェック</th></tr></thead><tbody>`;
+ h+=`<div class="stats"><div>提出<b>${subs.length} / ${rows.length}人</b></div><div>平均正答率（◯の割合）<b>${avg}%</b></div><div>講師チェック済み<b>${chk} / ${subs.length}人</b></div><div>？の数<b>${qn}個</b></div></div>
+ <div class="tw"><table class="roster"><thead><tr><th>生徒</th><th>状況</th><th>正答率（◯の割合・線＝70%）</th><th>◯ ✕</th><th>解き直し</th><th>？</th><th>チェック</th></tr></thead><tbody>`;
  if(!rows.length)h+=`<tr><td colspan="7" class="muted">このレッスンを配られた生徒がいません。教室長画面の「宿題の配布」で配ってください。</td></tr>`;
  rows.forEach(({s,r,g})=>{
   const st=!g?'<span class="st none">未提出</span>':r.checkedAt?'<span class="st done">チェック済み</span>':'<span class="st wait">チェック待ち</span>';
   h+=`<tr class="row ${S.tsel===s.studentId?'sel':''}" data-act="trow" data-v="${esc(s.studentId)}" tabindex="0"><td><b>${esc(s.name)}</b></td><td>${st}</td>
   <td>${g?`<span class="bar"><i class="${g.rate<70?'low':''}" style="width:${g.rate}%"></i><em style="left:70%"></em></span>${g.rate}%`:'<span class="muted">－</span>'}</td>
-  <td>${g?Object.values(g.cats).map(v=>`${v.hit}/${v.n}`).join('　'):'<span class="muted">－</span>'}</td>
-  <td>${g?Object.keys(r.answers.q).length:'－'}</td><td>${r?.attempt||'－'}</td>
+  <td>${g?.v5?oxtTotal(g.cats):g?Object.values(g.cats).map(v=>`${v.hit}/${v.n}`).join('　'):draftProgress(L,s)}</td>
+  <td>${retryCell(s)}</td>
+  <td>${g?Object.keys(r.answers.q).length:'－'}</td>
   <td class="muted">${r?.checkedAt?`${esc(fmt(r.checkedAt))}<br>${esc(r.checkedBy)}`:''}</td></tr>`;
  });
  h+=`</tbody></table></div>`;
@@ -924,7 +1210,25 @@ function teacherView(){
  h+=`<p class="foot">${esc(fmt(T.loadedAt))} の時点の情報です。<button class="secondary" data-act="treload">最新にする</button></p>`;
  return h;
 }
+/* ◯✕ の合計（試作の △ が残っていれば小さく出す） */
+function oxtTotal(cats){
+ const c={o:0,t:0,x:0};Object.values(cats||{}).forEach(v=>{c.o+=v.o||0;c.t+=v.t||0;c.x+=v.x||0});
+ return `<span class="okc">◯${c.o}</span> <span class="ngc">✕${c.x}</span>${c.t?` <span class="muted">△${c.t}</span>`:''}`;
+}
+/* まだ提出していない生徒の進み具合（確かめた問題の数） */
+function draftProgress(L,s){
+ const it=s.draft?.checks?.items;if(!it)return '<span class="muted">－</span>';
+ const d=Object.values(it).filter(x=>x.r).length;
+ return `<span class="muted">確かめた ${d}/${s.total||'?'}</span>`;
+}
+/* 解き直しの結果 */
+function retryCell(s){
+ const R=s.draft?.retry;if(!R?.targets)return '<span class="muted">－</span>';
+ const c={o:0,t:0,x:0};R.targets.forEach(k=>{const r=R.items?.[k]?.r;if(r)c[r]++});
+ return `◯${c.o}/${R.targets.length}${R.finishedAt?'':' <span class="muted">（とちゅう）</span>'}`;
+}
 function classInsight(L,subs){
+ if(subs.some(x=>x.g.v5))return classInsightV5(L,subs);
  const tot={},miss={},qs={};
  subs.forEach(({g,r})=>{
   g.items.filter(i=>i.cat==='品詞').forEach(i=>{tot[i.key]=(tot[i.key]||0)+1;if(!i.ok)miss[i.key]=(miss[i.key]||0)+1});
@@ -934,6 +1238,78 @@ function classInsight(L,subs){
  const qlist=Object.entries(qs).sort((x,y)=>y[1]-x[1]);
  return `<div class="grid2"><div class="card"><h2>品詞ごとのまちがい率</h2>${bars.map(b=>`<div class="hb"><span>${posName(b.k)}</span><span class="bar"><i class="${b.r>30?'low':''}" style="width:${b.r}%"></i></span><span>${b.r}%</span></div>`).join('')||'<p class="muted">提出がありません</p>'}</div>
  <div class="card"><h2>？が付いた単語</h2>${qlist.length?`<div class="chips">${qlist.map(([w,n])=>`<span class="chip">${esc(w)}<span>${n}</span></span>`).join('')}</div><p class="muted">複数の生徒が？を付けた単語は、文法の時間の導入に使えます。</p>`:'<p class="muted">？はまだありません</p>'}</div></div>`;
+}
+/* クラス全体（v5）：品詞ごとの「1回目でまちがえた割合」と、みんながつまずいた問題 */
+function classInsightV5(L,subs){
+ const tot={},miss={},qs={},hard={};
+ subs.forEach(({r})=>{
+  const items=r.checks?.items||{};
+  L.sentences.forEach((s,si)=>s.tokens.forEach((tk,ti)=>{const it=items[`p:${si}:${ti}`];if(!it?.r)return;tot[tk.pos]=(tot[tk.pos]||0)+1;if(it.r!=='o')miss[tk.pos]=(miss[tk.pos]||0)+1}));
+  Object.entries(items).forEach(([k,it])=>{if(it.r==='t'||it.r==='x'){const h=hard[k]=hard[k]||{t:0,x:0};h[it.r]++}});
+  Object.keys(r.answers.q).forEach(k=>{const[s,t]=k.split('-').map(Number);const w=L.sentences[s]?.tokens[t]?.w;if(w)qs[w]=(qs[w]||0)+1});
+ });
+ const bars=Object.keys(tot).map(k=>({k,r:Math.round((miss[k]||0)/tot[k]*100)})).sort((x,y)=>y.r-x.r);
+ const top=Object.entries(hard).sort((a,b)=>(b[1].x*2+b[1].t)-(a[1].x*2+a[1].t)).slice(0,8);
+ const qlist=Object.entries(qs).sort((x,y)=>y[1]-x[1]);
+ return `<div class="card"><h2>みんながつまずいた問題</h2>${top.length?`<ul class="olist">${top.map(([k,c])=>`<li><span class="tagf">${k[0]==='m'?'意味':k[0]==='c'?'かたまり':'品詞'}</span>${itemLabel(L,k)}<span class="ngc">✕${c.x+c.t}人</span></li>`).join('')}</ul><p class="muted">✕ が多い順です。授業の最初に、どの文を扱うかを決めるのに使えます。</p>`:'<p class="muted">✕ はまだありません</p>'}</div>
+ <div class="grid2"><div class="card"><h2>品詞ごとの ✕ の割合</h2>${bars.map(b=>`<div class="hb"><span>${posName(b.k)}</span><span class="bar"><i class="${b.r>30?'low':''}" style="width:${b.r}%"></i></span><span>${b.r}%</span></div>`).join('')||'<p class="muted">提出がありません</p>'}</div>
+ <div class="card"><h2>？が付いた単語</h2>${qlist.length?`<div class="chips">${qlist.map(([w,n])=>`<span class="chip">${esc(w)}<span>${n}</span></span>`).join('')}</div><p class="muted">複数の生徒が？を付けた単語は、文法の時間の導入に使えます。</p>`:'<p class="muted">？はまだありません</p>'}</div></div>`;
+}
+/* v5：問題ごとの 答え・正解・理由・聞き方 */
+function ansText(L,k,v){
+ if(v===undefined||v===null||v==='')return '未入力';
+ if(k[0]==='m')return String(v);
+ if(k[0]==='p')return posName(v)||'未入力';
+ const si=+k.split(':')[1];
+ return (Array.isArray(v)?v:[]).map(c=>`[${words(L,si,c.from,c.to)}] ${c.role||'未'}`).join('　')||'未入力';
+}
+function keyInfo(L,k){
+ if(k[0]==='m'){const w=L.words.find(x=>'m:'+x.w===k)||{};return{key:w.example||(w.ok||[])[0]||'',why:w.why||'本文の中で合う意味を選ぶ。',ask:'「この文の中だと、どんな意味になりそう？」と聞く'}}
+ const[,si,rest]=k.split(':');
+ if(k[0]==='p'){const tk=L.sentences[+si].tokens[+rest],pw=POS_WHY[tk.pos]||{};return{key:posName(tk.pos)+((tk.alt||[]).length?`（${tk.alt.map(posName).join('・')}でも正解）`:''),why:tk.why||pw.why||'',ask:pw.ask||''}}
+ const[f,t]=rest.split('-').map(Number),c=L.sentences[+si].chunks.find(x=>x.from===f&&x.to===t)||{};
+ return{key:`[${words(L,+si,f,t)}] ${c.role}`,why:c.why||ROLE_WHY[c.role]||'',ask:ROLE_ASK[c.role]||''};
+}
+function oxtItem(L,k,it,rt){
+ const ki=keyInfo(L,k),type=k[0]==='m'?'意味':k[0]==='c'?'かたまり':'品詞';
+ return `<div class="mk"><div class="mk-h">${markBadge(it.r)}<span class="mk-type t-${type}">${type}</span>${itemLabel(L,k)}${it.f?`<span class="qtag" style="color:var(--ng);border-color:var(--ng)">ふり返り：${REF[it.f]}</span>`:''}${rt?.r?`<span class="tagf">解き直し ${MARK[rt.r]}</span>`:''}</div>
+ <div class="tries"><span class="was">生徒：${esc(ansText(L,k,it.a1))}</span><span class="right">正解：${esc(ki.key)}</span></div>
+ <p class="why"><b>理由</b>${esc(ki.why)}</p><p class="ask"><b>聞き方</b>${esc(ki.ask)}</p></div>`;
+}
+/* v5：授業で聞くこと（✕ → ？ の順） */
+function scaffoldsV5(L,r){
+ const items=r.checks?.items||{},out=[];
+ /* 文字だけの名前（ここでは esc をあとでまとめてかけるので、HTML にしない） */
+ const lab=k=>{if(k[0]==='m')return k.slice(2);const[,si,rest]=k.split(':');if(k[0]==='p')return `${L.sentences[+si].tokens[+rest].w}（文${+si+1}）`;const[f,t]=rest.split('-').map(Number);return `[${words(L,+si,f,t)}]（文${+si+1}）`};
+ ['x','t'].forEach(m=>Object.entries(items).filter(([,it])=>it.r===m).forEach(([k,it])=>{
+  const ki=keyInfo(L,k);
+  out.push(`${MARK[m]} ${lab(k)}${it.f?`（ふり返り：${REF[it.f]}）`:''}。${ki.ask||'「どう考えた？」と聞き、自分の言葉で説明してもらう'}`);
+ }));
+ Object.keys(r.answers.q).forEach(k=>{const[s,t]=k.split('-').map(Number);const w=L.sentences[s]?.tokens[t]?.w;if(w)out.push(`？ 「${w}」に？。答えを言う前に「この単語は文の中で何をしている？」と聞く`)});
+ return out.slice(0,8);
+}
+function detailViewV5(L,st){
+ const r=st.latest,items=r.checks.items||{},rt=st.draft?.retry,dis=S.checking?'disabled':'',sc=scaffoldsV5(L,r);
+ const C=r.cats||{};
+ let h=`<div class="detail"><div class="card"><h2><span>${esc(st.name)}　${r.rate}%</span><span class="checkbar">${r.checkedAt?`<span class="muted">${esc(fmt(r.checkedAt))} ${esc(r.checkedBy)} がチェック</span><button class="secondary" data-act="uncheck" data-v="${esc(r.submissionId)}" ${dis}>取り消す</button>`:`<button class="primary" data-act="check" data-v="${esc(r.submissionId)}" ${dis}>${esc(S.auth.teacherName)}としてチェック済みにする</button>`}</span></h2>
+ <p class="muted">${esc(fmt(r.submittedAt))} 提出・正答率は ◯ の割合</p>
+ <div class="mcount">${['意味','かたまり','品詞'].map(k=>{const v=C[k]||{};return `<span class="t-${k}">${k} ◯${v.o||0} ✕${(v.x||0)+(v.t||0)}</span>`}).join('')}</div>
+ ${rt?.targets?`<p class="muted" style="margin:6px 0 0">解き直し：${retryCell(st)}${rt.finishedAt?`（${esc(fmt(rt.finishedAt))}）`:''}</p>`:''}
+ <h2 style="margin-top:12px">授業で聞くこと（✕ → ？ の順）</h2>${sc.length?`<ol class="scaf">${sc.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`:'<p class="muted">全部正解です。正確にできたことを具体的に認めて、文法に進みましょう。</p>'}
+ ${r.answers.memo?`<h2 style="margin-top:12px">生徒からの質問</h2><p class="memo">${esc(r.answers.memo)}</p>`:''}</div>
+ <h2 class="sech">✕ の問題</h2><p class="muted" style="margin-top:-4px">生徒の答え、正解・理由・聞き方。「解き直し」の印は、解き直しの結果です。</p>`;
+ const bad=([,it])=>it.r==='t'||it.r==='x';
+ L.sentences.forEach((x,si)=>{
+  const list=Object.entries(items).filter(([k])=>k[0]!=='m'&&+k.split(':')[1]===si).filter(bad);
+  if(!list.length){h+=`<div class="card okrow"><span class="sno">文 ${si+1}</span><span class="okc">全部 ◯</span><span class="msent small">${spkIn(x)}${esc(jt(x.tokens)+x.end)}</span></div>`;return}
+  const grp=(c,label)=>{const g=list.filter(([k])=>k[0]===c);return g.length?`<h3 class="mk-sec">${label}（${g.length}か所）</h3><div class="mks">${g.map(([k,it])=>oxtItem(L,k,it,rt?.items?.[k])).join('')}</div>`:''};
+  h+=`<div class="card"><div class="sno">文 ${si+1}</div><p class="msent">${spkIn(x)}${esc(jt(x.tokens)+x.end)}</p>${grp('c','かたまり')}${grp('p','品詞')}</div>`;
+ });
+ const mean=Object.entries(items).filter(([k])=>k[0]==='m').filter(bad);
+ if(mean.length)h+=`<div class="card"><div class="sno">意味調べ</div><div class="mks">${mean.map(([k,it])=>oxtItem(L,k,it,rt?.items?.[k])).join('')}</div></div>`;
+ const J=teacherJudge(L);
+ h+=`<details class="card"><summary>生徒の最後の答え全体を色分けで見る</summary>${L.sentences.map((x,si)=>`<div class="sno" style="margin-top:12px">文 ${si+1}</div>${reviewLine(L,si,r.answers,J)}`).join('')}</details>`;
+ return h+'</div>';
 }
 function scaffolds(L,a,g){
  const out=[];
@@ -978,7 +1354,12 @@ function markedSentence(L,si,a){
 function detailView(L,id){
  const st=S.tData.students.find(x=>x.studentId===id);if(!st)return '';
  const r=st.latest;
- if(!r){const c=counts(L,st.draft?fitA(L,st.draft):blankA(L));return `<div class="card detail"><h2>${esc(st.name)}</h2><p>まだ提出していません。今の進み具合：意味 ${c.m}/${c.mn}、かたまり ${c.r}/${c.rn}、品詞 ${c.p}/${c.pn}</p><p class="muted">授業の最初に「どこで止まった？」と聞き、続きを一緒に始めると提出につながります。</p></div>`}
+ if(!r){
+  const it=st.draft?.checks?.items;
+  const prog=it?`確かめた問題：${Object.values(it).filter(x=>x.r).length} / ${st.total||'?'}（◯${Object.values(it).filter(x=>x.r==='o').length} ✕${Object.values(it).filter(x=>x.r==='x'||x.r==='t').length}）`:(()=>{const c=counts(L,st.draft?fitA(L,st.draft):blankA(L));return `意味 ${c.m}/${c.mn}、かたまり ${c.r}/${c.rn}、品詞 ${c.p}/${c.pn}`})();
+  return `<div class="card detail"><h2>${esc(st.name)}</h2><p>まだ提出していません。今の進み具合：${prog}</p><p class="muted">授業の最初に「どこで止まった？」と聞き、続きを一緒に始めると提出につながります。</p></div>`;
+ }
+ if(r.checks)return detailViewV5(L,st);
  const a=r.answers,{g,bySent,mean}=mistakes(L,a),sc=scaffolds(L,a,g);
  const cnt=k=>g.cats[k].n-g.cats[k].hit;
  const dis=S.checking?'disabled':'';
@@ -1153,7 +1534,8 @@ function openPreview(i){
  const c=S.aCheck?.items?S.aCheck:checkLessonJson();
  const x=c.items?.[i||0];if(!x||x.errors.length)return render();
  const L=viewLesson(x.L);
- Object.assign(S,{screen:'preview',L,draft:blankA(L),sub:null,step:1,si:0,showResult:false,error:'',tool:posSetOf(L)[0].k,tap:''});
+ Object.assign(S,{screen:'preview',L,draft:blankA(L),sub:null,latest:null,chk:{items:{},fb:{},done:[],rate:0,cats:null},rt:null,mode:'main',pvFull:{},chkBusy:'',
+  total:L.words.length+L.sentences.reduce((t,s)=>t+s.tokens.length+s.chunks.length,0),step:1,si:0,showResult:false,error:'',tool:posSetOf(L)[0].k,tap:''});
  if(L.lines)loadIll(L.lessonId);
  render();window.scrollTo(0,0);
 }
@@ -1309,7 +1691,8 @@ function adminAssignView(){
 /* ===== 操作 ===== */
 document.addEventListener('click',e=>{
  const el=e.target.closest('[data-act]');if(!el||el.disabled)return;
- const act=el.dataset.act,a=S.draft;
+ const act=el.dataset.act,a=ansNow();
+ const dirty=()=>{if(S.mode==='main')markDirty()};
  if(act==='dismiss'){S.error=''}
  else if(act==='logout'){logout();return}
  else if(act==='lrole'){S.form.role=el.dataset.v;S.error=''}
@@ -1318,17 +1701,22 @@ document.addEventListener('click',e=>{
  else if(act==='back'){backToList();return}
  else if(act==='step'){S.step=+el.dataset.v;S.si=0;window.scrollTo(0,0)}
  else if(act==='sent'){const v=+el.dataset.v;if(v>=0&&v<S.L.sentences.length)S.si=v}
- else if(act==='gap'){const si=+el.dataset.s,g=+el.dataset.g,b=a.bounds[si];const i=b.indexOf(g);i>=0?b.splice(i,1):b.push(g);markDirty()}
- else if(act==='role'){const si=+el.dataset.s,k=el.dataset.k,c=a.roles[si][k]||'',cy=['',...roleSetOf(S.L)];a.roles[si][k]=cy[(cy.indexOf(c)+1)%cy.length];if(!a.roles[si][k])delete a.roles[si][k];markDirty()}
+ else if(act==='gap'){const si=+el.dataset.s,g=+el.dataset.g,b=a.bounds[si];if(gapLocked(si,g))return;const i=b.indexOf(g);i>=0?b.splice(i,1):b.push(g);dirty()}
+ else if(act==='role'){const si=+el.dataset.s,k=el.dataset.k,c=a.roles[si][k]||'',cy=['',...roleSetOf(S.L)];if(roleLocked(si,k))return;a.roles[si][k]=cy[(cy.indexOf(c)+1)%cy.length];if(!a.roles[si][k])delete a.roles[si][k];dirty()}
  else if(act==='tool'){S.tool=el.dataset.v}
  else if(act==='word'){const si=+el.dataset.s,ti=+el.dataset.t,k=si+'-'+ti;
   if(S.tool==='?'){a.q[k]?delete a.q[k]:a.q[k]=1}
+  else if(tokLocked(si,ti))return;
   else if(S.tool==='x'){a.pos[si][ti]=null}
   else{a.pos[si][ti]=a.pos[si][ti]===S.tool?null:S.tool}
-  markDirty()}
+  dirty()}
  else if(act==='submit'){submit();return}
  else if(act==='showres'){S.showResult=true}
- else if(act==='retry'){S.showResult=false;S.step=1;window.scrollTo(0,0)}
+ else if(act==='ck'){doCheck(el.dataset.kind,el.dataset.v);return}
+ else if(act==='refl'){doReflect(el.dataset.k,el.dataset.f);return}
+ else if(act==='startretry'){if(S.rt&&!confirm('解き直しを、はじめからやり直しますか？'))return;startRetry();return}
+ else if(act==='contretry'){enterRetry()}
+ else if(act==='endretry'){S.mode='main';S.showResult=true;window.scrollTo(0,0)}
  else if(act==='trow'){S.tsel=el.dataset.v}
  else if(act==='check'){setCheck(el.dataset.v,true);return}
  else if(act==='uncheck'){setCheck(el.dataset.v,false);return}
@@ -1342,7 +1730,7 @@ document.addEventListener('click',e=>{
  else if(act==='aclear'){S.aJson='';S.aCheck=null;S.aSave=null}
  else if(act==='gw'){S.tap=S.tap===el.dataset.v?'':el.dataset.v}
  else if(act==='adelill'){deleteIll(el.dataset.v,+el.dataset.n);return}
- else if(act==='pvback'){S.screen='admin';S.L=null;S.draft=null;S.sub=null;window.scrollTo(0,0)}
+ else if(act==='pvback'){S.screen='admin';S.L=null;S.draft=null;S.sub=null;S.latest=null;S.chk=null;window.scrollTo(0,0)}
  else if(act==='agrade'){const on=el.dataset.on==='1';(S.aData?.students||[]).filter(x=>x.grade===el.dataset.v).forEach(x=>on?S.aSel.add(x.studentId):S.aSel.delete(x.studentId))}
  else if(act==='aassign'){doAssign(true);return}
  else if(act==='aunassign'){doAssign(false);return}
@@ -1358,7 +1746,8 @@ document.addEventListener('submit',e=>{
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&e.target.matches('tr[data-act]')){S.tsel=e.target.dataset.v;render()}});
 document.addEventListener('input',e=>{
  const el=e.target,k=el.dataset.in;if(!k)return;
- if(k==='meaning'){S.draft.meanings[el.dataset.w]=el.value;markDirty()}
+ if(k==='meaning'){const A=ansNow(),w=el.dataset.w;A.meanings[w]=el.value;if(S.mode==='main')markDirty();
+  const it=itemOf('m:'+w);if(it?.r==='x'&&meanFixed(w,it,A))render()}
  else if(k==='memo'){S.draft.memo=el.value;markDirty()}
  else if(k==='ajson'){S.aJson=el.value;S.aCheck=null;S.aSave=null}
  else if(k in S.form){S.form[k]=el.value}
