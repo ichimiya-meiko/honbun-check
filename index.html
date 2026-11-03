@@ -346,19 +346,33 @@ button[disabled]{opacity:.5;cursor:default}
 .tagf{font-size:.75rem;border:1px solid var(--line);border-radius:4px;padding:0 6px;color:var(--sub)}
 .tries{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:.92rem;margin:4px 0}
 .pvnote{font-size:.85rem;color:var(--sub);margin:4px 0 0}
+/* ===== v7：お手本の読み上げ ===== */
+.ttsbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 12px}
+.ttsbar .primary,.ttsbar .secondary{min-height:44px;padding:8px 16px;font-size:1rem}
+.ttsrate{display:inline-flex;background:var(--soft);border:1px solid var(--line);border-radius:999px;padding:3px}
+.ttsrate button{border:0;background:none;padding:6px 14px;border-radius:999px;min-height:38px;font-weight:500;color:var(--sub)}
+.ttsrate button[aria-pressed="true"]{background:var(--ink);color:var(--paper)}
+.ttsone{margin-left:auto;border:1.5px solid var(--line);background:var(--paper);border-radius:999px;min-width:44px;min-height:44px;font-size:1.1rem;line-height:1}
+.ttsone[disabled]{opacity:.35}
+.ln-spk{justify-content:space-between}
+.ln.saying{box-shadow:inset 4px 0 0 var(--focus);background:color-mix(in srgb,var(--focus) 7%,var(--paper))}
+[data-g].say{background:color-mix(in srgb,var(--focus) 32%,transparent);border-radius:6px;transition:background .1s}
+@media (prefers-reduced-motion:reduce){[data-g].say{transition:none}}
 .pvbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
 </style>
 </head>
 <body>
 <header><div class="hin">
-  <div class="brand">本文分析ノート<small>v6</small></div>
+  <div class="brand">本文分析ノート<small>v7</small></div>
   <div class="hright" id="hright"></div>
 </div></header>
 <main id="main"></main>
 
 <script>
 /* ===== 設定 ===== */
-const VERSION=6;
+const VERSION=7;
+/* この画面が使う GAS の版（v7 は画面だけを変えたので、GAS は v6 のまま） */
+const SERVER_VERSION=6;
 /* ↓ GAS を「ウェブアプリ」として公開したときの URL を ' ' の間に貼る（docs/setup.md 手順7） */
 const API_URL='https://script.google.com/macros/s/AKfycbxUiT8hdHzK3Ol4ZKZJT1hFNnyWGQolkUCGVA3amXMKUl_dXqweX0BrD6XMpVfs9Q_j/exec';
 
@@ -799,6 +813,95 @@ async function setCheck(id,on){
 }
 
 /* ===== 画面：共通 ===== */
+/* ===== v7：お手本の読み上げ（タブレットの読み上げ機能。サーバーは使わない） =====
+ * 読んでいる単語に色を付ける（boundary が来る端末だけ）。来ない端末では、せりふ全体に色を付ける。
+ */
+const TTS={ok:typeof window!=='undefined'&&'speechSynthesis' in window&&'SpeechSynthesisUtterance' in window,voice:null,ready:false,
+ rate:'normal',play:null,li:-1,gi:-1,timer:null,run:0};
+const TTS_RATE={slow:0.7,normal:1.0};
+function ttsPickVoice(){
+ if(!TTS.ok)return;
+ const vs=speechSynthesis.getVoices()||[];
+ const en=vs.filter(v=>/^en([-_]|$)/i.test(v.lang||''));
+ const us=en.filter(v=>/^en[-_]US/i.test(v.lang));
+ /* 端末の中の声（localService）を先に使う。単語の位置（boundary）が届きやすいため */
+ TTS.voice=us.find(v=>v.localService)||en.find(v=>v.localService)||us[0]||en[0]||null;
+ TTS.ready=TTS.ready||vs.length>0;
+}
+if(TTS.ok){
+ ttsPickVoice();
+ speechSynthesis.addEventListener?.('voiceschanged',()=>{ttsPickVoice();if(S.L)render()});
+ /* 声の一覧が届くまで少し待つ端末がある（Chrome など）。届かなければ「声がない」として出す */
+ setTimeout(()=>{TTS.ready=true;ttsPickVoice();if(S.L&&!TTS.voice)render()},1500);
+}
+const ttsCan=()=>TTS.ok&&!!TTS.voice;
+/* 英語の声がない端末への案内 */
+function ttsNotice(){
+ if(ttsCan()||!TTS.ready&&TTS.ok)return '';
+ return `<div class="banner" role="status" style="margin:0 0 12px"><b>このタブレットには、英語の読み上げの声がありません。</b>
+ <ul style="margin:6px 0 0;padding-left:1.2em"><li>iPad：「設定」→「アクセシビリティ」→「読み上げコンテンツ」→「声」→「英語」で、声をえらんでください。</li>
+ <li>Chromebook：インターネットにつながっているか確かめてから、画面を開き直してください。</li></ul></div>`;
+}
+/* 上の「全部続けて聞く・止める・ゆっくり／ふつう」 */
+function ttsBar(){
+ const dis=ttsCan()?'':'disabled',playing=TTS.play!==null;
+ return `<div class="ttsbar" role="group" aria-label="お手本を聞く"><button class="primary" data-act="ttsall" ${dis}>${playing&&TTS.play==='all'?'🔊 読んでいます…':'🔊 全部続けて聞く'}</button>
+ <button class="secondary" data-act="ttsstop" ${playing?'':'disabled'}>■ 止める</button>
+ <span class="ttsrate" role="group" aria-label="速さ"><button data-act="ttsrate" data-v="slow" aria-pressed="${TTS.rate==='slow'}" ${dis}>ゆっくり</button><button data-act="ttsrate" data-v="normal" aria-pressed="${TTS.rate==='normal'}" ${dis}>ふつう</button></span></div>`;
+}
+const ttsBtn=li=>`<button class="ttsone" data-act="ttsone" data-v="${li}" ${ttsCan()?'':'disabled'} aria-label="このせりふを聞く">🔊</button>`;
+/* 今読んでいる所に色を付ける（画面を描きかえたあとにも呼ぶ） */
+function ttsPaint(){
+ document.querySelectorAll('.ln.saying').forEach(e=>e.classList.remove('saying'));
+ document.querySelectorAll('[data-g].say').forEach(e=>e.classList.remove('say'));
+ if(TTS.play===null||TTS.li<0)return;
+ document.querySelector(`.ln[data-li="${TTS.li}"]`)?.classList.add('saying');
+ if(TTS.gi>=0)document.querySelector(`[data-g="${TTS.li}-${TTS.gi}"]`)?.classList.add('say');
+ const bar=document.querySelector('.ttsbar');
+ if(bar){const tmp=document.createElement('div');tmp.innerHTML=ttsBar();bar.replaceWith(tmp.firstElementChild)}
+}
+function ttsStop(){
+ TTS.run++;clearTimeout(TTS.timer);
+ if(TTS.ok)try{speechSynthesis.cancel()}catch(e){}
+ TTS.play=null;TTS.li=-1;TTS.gi=-1;ttsPaint();
+}
+/* 文字の位置 → gloss の何番目か */
+function ttsGlossAt(l,ci){
+ /* その位置をふくむ単語。間の空白などのときは、すぐ後ろの単語 */
+ let pos=0,hit=-1,after=-1;
+ (l.gloss||[]).forEach((g,gi)=>{const p=l.text.indexOf(g.w,pos);if(p<0)return;if(ci>=p&&ci<p+g.w.length)hit=gi;if(after<0&&p>=ci)after=gi;pos=p+g.w.length});
+ return hit>=0?hit:after;
+}
+function ttsSpeak(li,then){
+ const L=S.L,l=L?.lines?.[li];if(!l||!ttsCan())return ttsStop();
+ const run=TTS.run;
+ TTS.li=li;TTS.gi=-1;ttsPaint();
+ if(TTS.play==='all')document.querySelector(`.ln[data-li="${li}"]`)?.scrollIntoView({block:'center',behavior:'smooth'});
+ const u=new SpeechSynthesisUtterance(l.text);
+ u.voice=TTS.voice;u.lang=TTS.voice.lang;u.rate=TTS_RATE[TTS.rate];
+ u.onboundary=e=>{if(run!==TTS.run||e.name&&e.name!=='word')return;TTS.gi=ttsGlossAt(l,e.charIndex);ttsPaint()};
+ const done=()=>{if(run!==TTS.run)return;TTS.gi=-1;if(then)then();else ttsStop()};
+ u.onend=done;u.onerror=done;
+ try{speechSynthesis.cancel();speechSynthesis.resume?.()}catch(e){}
+ speechSynthesis.speak(u);
+}
+function ttsOne(li){
+ if(TTS.play!==null&&TTS.li===li&&TTS.play==='one')return ttsStop();
+ ttsStop();TTS.play='one';ttsSpeak(li,null);
+}
+function ttsAll(){
+ ttsStop();TTS.play='all';
+ const n=S.L.lines.length,run=TTS.run;
+ const next=li=>{if(run!==TTS.run)return;if(li>=n)return ttsStop();ttsSpeak(li,()=>{TTS.timer=setTimeout(()=>next(li+1),450)})};
+ next(0);
+}
+/* 結果の画面：せりふを聞く（訳つき。新出単語は「（　　）」のまま） */
+function linesListen(L){
+ if(!L.lines)return '';
+ return `<details class="card" ${S.listenOpen?'open':''} data-keep="listen"><summary>🔊 せりふを聞く</summary><div style="margin-top:10px">${ttsNotice()}${ttsBar()}</div>
+ ${L.lines.map((l,li)=>`<div class="ln" data-li="${li}" style="border-bottom:1px solid var(--line)"><div class="ln-spk">${esc(l.speaker||'')}${ttsBtn(li)}</div>
+ <div class="ln-en">${lineEn(l,li,false)}</div><p class="ln-ja">${jaHtml(l.ja,false)}</p></div>`).join('')}</details>`;
+}
 function render(){
  document.getElementById('hright').innerHTML=headRight();
  let h=S.error?`<p class="banner err" role="alert">${esc(S.error)}<button class="linkbtn" data-act="dismiss">閉じる</button></p>`:'';
@@ -812,6 +915,7 @@ function render(){
  keepx.forEach(([k,x])=>{const e=document.querySelector(`[data-keepx="${k}"]`);if(e)e.scrollLeft=x});
  const hd=document.querySelector('header');if(hd)document.documentElement.style.setProperty('--hh',hd.offsetHeight+'px');
  updateSaveState();
+ ttsPaint();
 }
 const loadingView=()=>`<p class="muted loading">読み込み中…</p>`;
 function headRight(){
@@ -896,8 +1000,8 @@ function lineEn(l,li,tappable){
   h+=esc(l.text.slice(pos,p));pos=p+g.w.length;
   const k=li+'-'+gi;
   const nw=g.new||g.hide;
-  h+=tappable?`<button class="gw ${nw?'new':''} ${tight?'tight':''} ${S.tap===k?'on':''}" data-act="gw" data-v="${k}">${esc(g.w)}</button>`
-   :`<span class="${nw?'gw new':''}">${esc(g.w)}</span>`;
+  h+=tappable?`<button class="gw ${nw?'new':''} ${tight?'tight':''} ${S.tap===k?'on':''}" data-act="gw" data-v="${k}" data-g="${k}">${esc(g.w)}</button>`
+   :`<span class="${nw?'gw new':''}" data-g="${k}">${esc(g.w)}</span>`;
  });
  return h+esc(l.text.slice(pos));
 }
@@ -932,9 +1036,10 @@ function step1(a){
  const first={};L.lines.forEach((l,li)=>(l.gloss||[]).forEach(g=>{if(g.new&&first[wkey(g.w)]===undefined)first[wkey(g.w)]=li}));
  let h=`<p class="guide">挿絵を見ながら、せりふを読もう。単語をタップすると、その文の中での意味が出ます。<b style="color:var(--p-adj)">緑の単語</b>は新しい単語です。意味を調べて、下の欄に書こう。</p>`;
  h+=illView(L.lessonId);
+ h+=ttsNotice()+ttsBar();
  L.lines.forEach((l,li)=>{
   const tg=S.tap.startsWith(li+'-')?l.gloss[+S.tap.split('-')[1]]:null;
-  h+=`<div class="card ln"><div class="ln-spk">${esc(l.speaker||'')}${Number.isInteger(l.sentence)?'<span class="ln-tag">分析する文</span>':''}</div>
+  h+=`<div class="card ln" data-li="${li}"><div class="ln-spk"><span>${esc(l.speaker||'')}${Number.isInteger(l.sentence)?'<span class="ln-tag">分析する文</span>':''}</span>${ttsBtn(li)}</div>
   <div class="ln-en">${lineEn(l,li,true)}</div>
   ${tg?`<p class="gl-pop"><b>${esc(tg.w)}</b>${tg.new?'新出単語（調べてみよう）。意味は下の欄に書こう。':tg.hide?'新出単語（調べてみよう）':esc(tg.ja)}</p>`:''}
   <p class="ln-ja">${jaHtml(l.ja,false)}</p>`;
@@ -1126,7 +1231,7 @@ function resultView(r){
   const order=k=>k[0]==='m'?0:k[0]==='c'?1:2;
   h+=`<div class="card"><h2>✕ の問題</h2><ul class="olist">${tx.sort((a,b)=>order(a[0])-order(b[0])).map(([k,it])=>`<li>${markBadge(it.r)}<span class="tagf">${k[0]==='m'?'意味':k[0]==='c'?'かたまり':'品詞'}</span>${itemLabel(L,k)}${it.f?`<span class="tagf">${REF[it.f]}</span>`:''}${R?.items?.[k]?.r?`<span class="muted">解き直し ${markBadge(R.items[k].r)}</span>`:''}</li>`).join('')}</ul></div>`;
  }else h+=`<div class="card"><p class="okc">全部 ◯ です！</p></div>`;
- return h;
+ return h+linesListen(L);
 }
 function resultViewOld(r){
  const g=r.result,a=r.answers,L=S.L,M=g.marks;
@@ -1714,12 +1819,16 @@ document.addEventListener('click',e=>{
  const act=el.dataset.act,a=ansNow();
  const dirty=()=>{if(S.mode==='main')markDirty()};
  if(act==='dismiss'){S.error=''}
- else if(act==='logout'){logout();return}
+ else if(act==='logout'){ttsStop();logout();return}
+ else if(act==='ttsone'){ttsOne(+el.dataset.v);return}
+ else if(act==='ttsall'){ttsAll();return}
+ else if(act==='ttsstop'){ttsStop();return}
+ else if(act==='ttsrate'){TTS.rate=el.dataset.v;if(TTS.play!==null)ttsStop()}
  else if(act==='lrole'){S.form.role=el.dataset.v;S.error=''}
  else if(act==='ccreset'){S.roster=null;S.error=''}
  else if(act==='open'){openLesson(el.dataset.v);return}
- else if(act==='back'){backToList();return}
- else if(act==='step'){S.step=+el.dataset.v;S.si=0;window.scrollTo(0,0)}
+ else if(act==='back'){ttsStop();backToList();return}
+ else if(act==='step'){ttsStop();S.step=+el.dataset.v;S.si=0;window.scrollTo(0,0)}
  else if(act==='sent'){const v=+el.dataset.v;if(v>=0&&v<S.L.sentences.length)S.si=v}
  else if(act==='gap'){const si=+el.dataset.s,g=+el.dataset.g,b=a.bounds[si];if(gapLocked(si,g))return;const i=b.indexOf(g);i>=0?b.splice(i,1):b.push(g);dirty()}
  else if(act==='role'){const si=+el.dataset.s,k=el.dataset.k,c=a.roles[si][k]||'',cy=['',...roleSetOf(S.L)];if(roleLocked(si,k))return;a.roles[si][k]=cy[(cy.indexOf(c)+1)%cy.length];if(!a.roles[si][k])delete a.roles[si][k];dirty()}
@@ -1783,11 +1892,12 @@ document.addEventListener('change',e=>{
  else if(k==='asel'){el.checked?S.aSel.add(el.value):S.aSel.delete(el.value);render()}
 });
 document.addEventListener('toggle',e=>{if(e.target.dataset?.keep==='posex')S.posEx=e.target.open},true);
-window.addEventListener('pagehide',beaconFlush);
+window.addEventListener('pagehide',()=>{ttsStop();beaconFlush()});
+document.addEventListener('toggle',e=>{if(e.target.dataset?.keep==='listen'){S.listenOpen=e.target.open;if(!e.target.open)ttsStop()}},true);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')beaconFlush()});
 
 /* 動作確認スクリプト（tools/console-check.js）から使う */
-window.HC={VERSION,api,state:S,render,normJa,get apiUrl(){return API_URL}};
+window.HC={VERSION,SERVER_VERSION,TTS,api,state:S,render,normJa,get apiUrl(){return API_URL}};
 start();
 </script>
 </body>

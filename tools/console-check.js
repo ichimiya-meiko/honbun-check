@@ -1,5 +1,5 @@
 /*
- * 本文分析ノート 動作確認スクリプト（v6 用）
+ * 本文分析ノート 動作確認スクリプト（v7 用）
  *
  * 使い方
  *   1. Chrome で index.html を開き、ログインする（生徒・講師・教室長のどれでもよい）。
@@ -20,6 +20,7 @@
  *   ・（生徒）意味調べのせりふに、新出単語の意味と訳の答えが入っていないか
  *   ・挿絵がもらえるか、配られていない人にはもらえないか（挿絵を受けとる時間も測ります）
  *   ・（生徒）まだ確かめていない問題の答えが届いていないか。ログインしていない人や講師は「確かめる」を使えないか
+ *   ・英語の読み上げの声が、このタブレットにあるか（声の名前を出します。音は出しません）
  *   ・画面を描きかえる速さ
  *   ※ まちがったログインを数回ためします。同じ人を何回も続けてためすと、10分ログインできなくなることがあります。
  *
@@ -59,8 +60,9 @@
 
   await step('サーバーとの通信（ping）', async () => {
     const j = await HC.api('ping');
-    if (j.version !== HC.VERSION) throw new Error(`版がちがう：画面 v${HC.VERSION} / サーバー v${j.version}。GAS を再デプロイしてください。`);
-    return `v${j.version}`;
+    const want = HC.SERVER_VERSION || HC.VERSION;
+    if (j.version !== want) throw new Error(`版がちがう：画面 v${HC.VERSION} は GAS v${want} を使います。今のサーバーは v${j.version}。GAS を入れかえて再デプロイしてください。`);
+    return `画面 v${HC.VERSION}・サーバー v${j.version}`;
   });
   await step('教室コードの確認', async () => { const j = await HC.api('listTeachers'); return `講師 ${j.teachers.length}人`; });
   await step('まちがった教室コードはことわる', () => expectFail(HC.api('listTeachers', { classCode: wrong() }), ['class']));
@@ -154,6 +156,14 @@
     rows.push({ 項目: 'ログイン後の確認', 結果: 'とばした', ミリ秒: 0, メモ: 'ログインしてからもう一度実行すると、もっと確かめられます' });
   }
 
+  await step('英語の読み上げの声', async () => {
+    const T = HC.TTS;
+    if (!T) return 'この版には読み上げがありません';
+    if (!T.ok) throw new Error('このブラウザは読み上げに対応していません');
+    const vs = speechSynthesis.getVoices().filter(v => /^en/i.test(v.lang));
+    if (!T.voice) throw new Error(`英語の声がありません（声の数 ${speechSynthesis.getVoices().length}）。iPad は「設定」→「アクセシビリティ」→「読み上げコンテンツ」→「声」で英語をえらぶ`);
+    return `${T.voice.name}（${T.voice.lang}・${T.voice.localService ? '端末の中の声' : 'ネットの声：単語の色は付かないことがある'}）・英語の声 ${vs.length}個`;
+  });
   await step('画面の描きかえ（20回の平均）', async () => {
     const t0 = performance.now();
     for (let i = 0; i < 20; i++) HC.render();
