@@ -358,21 +358,49 @@ button[disabled]{opacity:.5;cursor:default}
 .ln.saying{box-shadow:inset 4px 0 0 var(--focus);background:color-mix(in srgb,var(--focus) 7%,var(--paper))}
 [data-g].say{background:color-mix(in srgb,var(--focus) 32%,transparent);border-radius:6px;transition:background .1s}
 @media (prefers-reduced-motion:reduce){[data-g].say{transition:none}}
+/* ===== v8：宿題と全部の単元 ===== */
+.hwsec{border:2px solid var(--focus);border-radius:14px;padding:10px 12px 2px;margin:0 0 18px;background:color-mix(in srgb,var(--focus) 6%,var(--paper))}
+.hwsec h2{margin:0 0 8px;display:flex;align-items:center;gap:8px}
+.hwsec .lcard{border-color:color-mix(in srgb,var(--focus) 40%,var(--line))}
+.due{font-size:.85rem;font-weight:700;color:var(--focus)}
+.due.late{color:var(--warn)}
+.lsec{margin:4px 0 8px;font-size:1rem;color:var(--sub)}
+.pracbox{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
+.pracbox .primary,.pracbox .secondary{min-height:44px}
+.hwtag{font-size:.75rem;border-radius:4px;padding:1px 6px;background:color-mix(in srgb,var(--focus) 14%,transparent);color:var(--focus);font-weight:700;white-space:nowrap}
+.hwtag.self{background:var(--soft);color:var(--sub)}
+.hwtag.before{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok)}
+.hwtag.late{background:color-mix(in srgb,var(--warn) 18%,transparent);color:var(--warn)}
+.pg{border-collapse:collapse;font-size:.82rem;min-width:100%}
+.pg th,.pg td{border:1px solid var(--line);padding:4px 6px;text-align:center;white-space:nowrap}
+.pg th:first-child,.pg td:first-child{text-align:left;position:sticky;left:0;background:var(--paper);z-index:1}
+.pg thead th{position:sticky;top:0;background:var(--soft);z-index:2}
+.pg td.c{cursor:pointer;min-width:58px;height:40px}
+.pg td.c:hover{outline:2px solid var(--focus);outline-offset:-2px}
+.pg td.c.sel{outline:3px solid var(--focus);outline-offset:-3px}
+.k-hw{background:color-mix(in srgb,var(--focus) 10%,transparent);color:var(--focus)}
+.k-go{background:color-mix(in srgb,var(--warn) 12%,transparent);color:var(--warn)}
+.k-ok{background:color-mix(in srgb,var(--ok) 14%,transparent);color:var(--ok);font-weight:700}
+.k-low{background:color-mix(in srgb,var(--ng) 12%,transparent);color:var(--ng);font-weight:700}
+.k-late{background:color-mix(in srgb,var(--warn) 30%,transparent);color:var(--ink);font-weight:700}
+.legendp{display:flex;gap:6px 14px;flex-wrap:wrap;font-size:.82rem;margin:6px 0 10px}
+.legendp span{display:inline-flex;gap:4px;align-items:center}
+.legendp i{display:inline-block;width:14px;height:14px;border-radius:3px}
 .pvbar{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:0 0 12px}
 </style>
 </head>
 <body>
 <header><div class="hin">
-  <div class="brand">本文分析ノート<small>v7</small></div>
+  <div class="brand">本文分析ノート<small>v8</small></div>
   <div class="hright" id="hright"></div>
 </div></header>
 <main id="main"></main>
 
 <script>
 /* ===== 設定 ===== */
-const VERSION=7;
-/* この画面が使う GAS の版（v7 は画面だけを変えたので、GAS は v6 のまま） */
-const SERVER_VERSION=6;
+const VERSION=8;
+/* この画面が使う GAS の版 */
+const SERVER_VERSION=8;
 /* ↓ GAS を「ウェブアプリ」として公開したときの URL を ' ' の間に貼る（docs/setup.md 手順7） */
 const API_URL='https://script.google.com/macros/s/AKfycbxUiT8hdHzK3Ol4ZKZJT1hFNnyWGQolkUCGVA3amXMKUl_dXqweX0BrD6XMpVfs9Q_j/exec';
 
@@ -455,12 +483,13 @@ async function api(action,payload={}){
 const S={
  classCode:'',roster:null,form:{cc:'',role:'student',sid:'',pin:'',tname:'',pass:'',apass:''},auth:null,screen:'login',busy:false,error:'',
  lessons:null,L:null,draft:null,sub:null,step:1,si:0,tool:'名',showResult:false,submitting:false,submitId:null,
- tLessons:null,tLessonId:'',tData:null,tsel:'',checking:false,
+ tLessons:null,tLessonId:'',tData:null,tsel:'',checking:false,tStudents:[],tSel:new Set(),tDue:'',tMsg2:'',tBusy:false,
  /* 教室長画面 */
+ pData:null,pGrade:'',pSel:'',pLoading:false,
  atab:'lesson',aData:null,aJson:'',aCheck:null,aSave:null,aBusy:false,aMsg:'',aLessonId:'',aDue:'',aSel:new Set(),aIllMsg:'',
  /* 意味調べ（v4） */
  ill:{id:'',status:'',imgs:[]},tap:'',posEx:true,
- /* v5：◯✕ の記録（chk：宿題 ／ rt：解き直し）。mode は 'main'（宿題）か 'retry'（解き直し） */
+ /* v5：◯✕ の記録（chk：宿題 ／ rt：練習）。mode は 'main'（宿題）か 'retry'（練習） */
  chk:null,rt:null,mode:'main',rdraft:null,chkBusy:'',total:0,latest:null
 };
 const SV={state:'idle',ver:0,savedVer:0,timer:null,inflight:null,again:false};
@@ -558,8 +587,8 @@ async function start(){
 }
 async function logout(msg){
  if(S.auth?.role==='student')await flushDraft().catch(()=>{});
- S.auth=null;S.roster=null;S.screen='login';S.lessons=null;S.L=null;S.tData=null;S.tLessons=null;S.tsel='';
- S.aData=null;S.aJson='';S.aCheck=null;S.aSave=null;S.aMsg='';S.aSel=new Set();
+ S.auth=null;S.roster=null;S.screen='login';S.lessons=null;S.L=null;S.tData=null;S.tLessons=null;S.tsel='';S.tSel=new Set();S.tMsg2='';
+ S.aData=null;S.aJson='';S.aCheck=null;S.aSave=null;S.aMsg='';S.aSel=new Set();S.pData=null;S.pSel='';
  S.form.pin='';S.form.pass='';S.form.apass='';
  S.error=msg||'';saveLogin();render();window.scrollTo(0,0);
 }
@@ -585,7 +614,7 @@ async function doLogin(role){
  S.busy=true;S.error='';render();
  try{
   const j=await api('login',payload);
-  S.auth=role==='student'?{role,classCode:S.classCode,token:j.token,studentId:j.studentId,name:j.name}
+  S.auth=role==='student'?{role,classCode:S.classCode,token:j.token,studentId:j.studentId,name:j.name,grade:j.grade}
    :role==='teacher'?{role,classCode:S.classCode,token:j.token,teacherName:j.teacherName}
    :{role,classCode:S.classCode,token:j.token};
   f.pin='';f.pass='';f.apass='';saveLogin();S.busy=false;
@@ -597,7 +626,7 @@ async function doLogin(role){
 /* 生徒 */
 async function goList(){
  S.screen='list';S.lessons=null;S.L=null;S.error='';render();
- try{const j=await api('listAssignments');S.lessons=j.lessons}catch(e){handleError(e)}
+ try{const j=await api('listAssignments');S.lessons=j.lessons;S.lessonsToday=j.today}catch(e){handleError(e)}
  render();
 }
 async function openLesson(id){
@@ -719,6 +748,7 @@ async function doCheck(kind,arg){
   R.done=R.done||[];if(j.done&&!R.done.includes(u))R.done.push(u);
   if(j.progress){R.rate=j.progress.rate;R.cats=j.progress.cats}
   if(S.mode==='retry'&&j.finishedAt)S.rt.finishedAt=j.finishedAt;
+  if(S.mode==='retry'&&j.targets)S.rt.targets=j.targets;
   if(S.screen!=='preview')markDirty();
  }catch(e){handleError(e)}
  S.chkBusy='';render();
@@ -730,7 +760,7 @@ async function doReflect(k,f){
  try{await api('reflect',{lessonId:S.L.lessonId,key:k,f,mode:S.mode});markDirty()}
  catch(e){it.f=before;handleError(e);render()}
 }
-/* 解き直し */
+/* 練習（✕ の問題だけ／全部もう一度） */
 function buildRetryDraft(){
  const L=S.L,a=blankA(L),R=S.rt;
  Object.entries(R.prefill.pos).forEach(([k,v])=>{const[si,ti]=k.split(':').map(Number);a.pos[si][ti]=v});
@@ -752,10 +782,23 @@ function firstRetryStep(){
 function enterRetry(){
  S.mode='retry';S.rdraft=buildRetryDraft();S.showResult=false;S.step=firstRetryStep();S.si=retrySents(S.step===2?'c':'p')[0]??0;window.scrollTo(0,0);
 }
-async function startRetry(){
+async function startRetry(kind){
  S.busy=true;S.error='';render();
- try{const j=await api('startRetry',{lessonId:S.L.lessonId});S.rt=j.retry;enterRetry()}catch(e){handleError(e)}
+ try{const j=await api('startRetry',{lessonId:S.L.lessonId,kind});S.rt=j.retry;enterRetry()}catch(e){handleError(e)}
  S.busy=false;render();
+}
+/* 結果の画面の「もう一度取り組む（練習）」。v5 より前の提出は ✕ の記録がないので「全部もう一度」だけ */
+function practiceBox(nx,canX){
+ if(S.screen==='preview')return '';
+ const R=S.rt,dis=S.busy?'disabled':'';
+ let h=`<div class="card"><h2>もう一度取り組む（練習）</h2><p class="muted" style="margin:0">練習の結果は、宿題の ◯✕ と正答率には入りません。何回でもできます。</p>`;
+ if(R?.targets){
+  const c={o:0,t:0,x:0};R.targets.forEach(k=>{const x=R.items?.[k]?.r;if(x)c[x]++});
+  h+=`<p class="banner" style="margin:8px 0 0">いちばん新しい練習（${R.kind==='all'?'全部もう一度':'✕ の問題だけ'}・${R.count||1}回目）：${markBadge('o')} ${c.o+c.t}　${markBadge('x')} ${c.x}（${R.targets.length}問中）${R.finishedAt?'　終わりました ✓':'　とちゅうです'}</p>`;
+  if(!R.finishedAt)h+=`<div class="pracbox"><button class="primary" data-act="contretry">続きをする</button></div>`;
+ }
+ h+=`<div class="pracbox">${canX&&nx?`<button class="${R?.targets&&!R.finishedAt?'secondary':'primary'}" data-act="startretry" data-v="x" ${dis}>✕ の問題だけ（${nx}問）</button>`:''}<button class="secondary" data-act="startretry" data-v="all" ${dis}>全部もう一度</button></div></div>`;
+ return h;
 }
 const retrySents=kind=>S.L.sentences.map((_,si)=>si).filter(si=>unitHasTarget(kind+':'+si));
 /* 教室長のプレビュー：GAS を使わずに、同じ決まりで確かめる（教室長は答えを持っているので） */
@@ -790,7 +833,7 @@ function localCheck(q){
 async function loadTeacher(){
  S.screen='teacher';S.error='';render();
  try{
-  if(!S.tLessons){const j=await api('listLessons');S.tLessons=j.lessons}
+  if(!S.tLessons){const j=await api('listLessons');S.tLessons=j.lessons;S.tStudents=j.students||[]}
   if(!S.tLessons.length){S.tData=null;return render()}
   if(!S.tLessons.some(l=>l.lessonId===S.tLessonId))S.tLessonId=S.tLessons[0].lessonId;
   saveLogin();
@@ -800,6 +843,20 @@ async function loadTeacher(){
   if(S.tsel&&!j.students.some(s=>s.studentId===S.tsel))S.tsel='';
  }catch(e){handleError(e)}
  render();
+}
+/* 講師が宿題を出す・取り消す（取り消せるのは、自分が出した宿題だけ） */
+async function doTAssign(on){
+ const ids=[...S.tSel];
+ if(!ids.length){S.error='生徒をえらんでください。';return render()}
+ if(!on&&!confirm(`えらんだ ${ids.length} 人の宿題を取り消しますか？（とちゅうの答えと提出は消えません）`))return;
+ S.tBusy=true;S.error='';S.tMsg2='';render();
+ try{
+  const j=await api(on?'assign':'unassign',{lessonId:S.tLessonId,studentIds:ids,dueDate:S.tDue});
+  S.tMsg2=on?`宿題を出しました（新しく ${j.added} 人${j.updated?`、期限を直した人 ${j.updated} 人`:''}）。`
+   :`${j.removed} 人の宿題を取り消しました。${j.skipped?`ほかの先生が出した宿題（${j.skipped} 人）は取り消せません。出した先生か教室長に伝えてください。`:''}`;
+  S.tSel=new Set();S.tBusy=false;return loadTeacher();
+ }catch(e){handleError(e)}
+ S.tBusy=false;render();
 }
 async function setCheck(id,on){
  if(S.checking)return;
@@ -946,14 +1003,33 @@ function loginView(){
 }
 
 /* ===== 生徒画面 ===== */
+/* 日付を「20261105」の形にする（くらべるため） */
+const dkey=v=>{const m=/^(\d{4})[\/-](\d{1,2})[\/-](\d{1,2})/.exec(String(v||''));return m?m[1]+('0'+m[2]).slice(-2)+('0'+m[3]).slice(-2):''};
+const isLate=(due,today)=>!!dkey(due)&&!!dkey(today)&&dkey(due)<dkey(today);
+/* 期限の表示（あと何日） */
+function dueText(due,today){
+ if(!dkey(due))return '<span class="due">期限なし</span>';
+ const lab=`期限 ${esc(fmtDate(due))}`,a=dkey(due),b=dkey(today);
+ if(!b)return `<span class="due">${lab}</span>`;
+ const n=Math.round((Date.UTC(+a.slice(0,4),+a.slice(4,6)-1,+a.slice(6))-Date.UTC(+b.slice(0,4),+b.slice(4,6)-1,+b.slice(6)))/864e5);
+ return n<0?`<span class="due late">${lab}（期限が過ぎています。できるところからやってみよう）</span>`:n===0?`<span class="due late">${lab}（今日まで）</span>`:`<span class="due">${lab}（あと${n}日）</span>`;
+}
+function lessonCard(l,today){
+ const st=l.attempts?(l.checked?`<span class="st done">先生がチェック ✓</span>`:`<span class="st done">提出ずみ（◯ ${l.rate}%）</span>`):l.hasDraft?`<span class="st wait">とちゅう</span>`:`<span class="st none">まだ</span>`;
+ const pr=l.practiceCount?`<span class="muted">練習 ${l.practiceCount}回</span>`:'';
+ return `<button class="card lcard" data-act="open" data-v="${esc(l.lessonId)}"><span><span class="unit">${l.homework?'<span class="hwtag">宿題</span> ':''}${esc(l.note)}</span><b>${esc(l.title)}</b>${l.source?`<span class="src">${esc(l.source)}</span>`:''}${l.homework&&!l.attempts?dueText(l.dueDate,today):''}${pr}</span>${st}</button>`;
+}
 function listView(){
- let h=`<section class="lhead"><div><p class="unit">${esc(S.auth.name)} さん</p><h1>宿題の一覧</h1></div></section>`;
+ let h=`<section class="lhead"><div><p class="unit">${esc(S.auth.name)} さん</p><h1>本文分析ノート</h1></div></section>`;
  if(!S.lessons)return h+loadingView();
- if(!S.lessons.length)return h+`<div class="card"><p>配られた宿題はまだありません。先生に伝えてください。</p></div>`;
- return h+S.lessons.map(l=>{
-  const st=l.attempts?(l.checked?`<span class="st done">先生がチェックしました</span>`:`<span class="st done">提出ずみ（◯ ${l.rate}%）</span>`):l.hasDraft?`<span class="st wait">とちゅう</span>`:`<span class="st none">まだ</span>`;
-  return `<button class="card lcard" data-act="open" data-v="${esc(l.lessonId)}"><span><span class="unit">${esc(l.note)}</span><b>${esc(l.title)}</b>${l.source?`<span class="src">${esc(l.source)}</span>`:''}${l.dueDate?`<span class="muted">期限 ${esc(fmtDate(l.dueDate))}</span>`:''}</span>${st}</button>`;
- }).join('');
+ if(!S.lessons.length)return h+`<div class="card"><p>まだレッスンがありません。先生に伝えてください。</p></div>`;
+ const today=S.lessonsToday||'';
+ /* 宿題：まだ提出していないものを、期限が近い順に。期限なしは後ろ */
+ const hw=S.lessons.filter(l=>l.homework&&!l.attempts).sort((a,b)=>(a.dueDate||'9999').localeCompare(b.dueDate||'9999'));
+ if(hw.length)h+=`<section class="hwsec"><h2>📌 宿題（${hw.length}）</h2>${hw.map(l=>lessonCard(l,today)).join('')}</section>`;
+ else h+=`<p class="banner" style="margin:0 0 14px">今出ている宿題は、ぜんぶ提出ずみです。下のレッスンで、自分で練習もできます。</p>`;
+ h+=`<h2 class="lsec">${S.auth.grade?esc(S.auth.grade)+' の':'ぜんぶの'}レッスン（Unit・Part の順）</h2>`;
+ return h+S.lessons.map(l=>lessonCard(l,today)).join('');
 }
 function studentView(){
  const L=S.L,a=ansNow(),r=S.latest;
@@ -965,7 +1041,7 @@ function studentView(){
  if(!recNow())return h+loadingView();
  const c=progressCounts();
  const steps=S.mode==='retry'?[['意味調べ',c.m],['かたまり',c.c],['品詞',c.p],['おわり','']]:[['意味調べ',c.m],['かたまり',c.c],['品詞',c.p],['提出','']];
- if(S.mode==='retry')h+=`<div class="retrybar"><span><b>解き直し中</b>　宿題で ✕ だった問題だけを、もう一度解きます。宿題の ◯✕ と正答率は変わりません。</span><button class="secondary" data-act="endretry">結果にもどる</button></div>`;
+ if(S.mode==='retry')h+=`<div class="retrybar"><span><b>練習中</b>（${S.rt?.kind==='all'?'全部もう一度':'✕ の問題だけ'}）　宿題の ◯✕ と正答率は変わりません。</span><button class="secondary" data-act="endretry">結果にもどる</button></div>`;
  h+=`<nav class="steps" aria-label="手順">${steps.map((s,i)=>`<button data-act="step" data-v="${i+1}" aria-current="${S.step===i+1?'step':'false'}"><span class="num">${i+1}</span><span class="lab">${s[0]}</span><span class="cnt">${s[1]}</span></button>`).join('')}</nav>`;
  return h+[step1,step2,step3,S.mode==='retry'?stepRetryEnd:step4][S.step-1](a);
 }
@@ -1015,10 +1091,10 @@ function meanBox(w,a,idp){
  if(it.r==='x')h+=xBox(k,it,`「${esc(it.ans)}」`,meanFixed(w,it,a));
  return h+'</div>';
 }
-/* 解き直しの意味調べ：解き直しの単語だけ、文といっしょに出す */
+/* 練習の意味調べ：練習の単語だけ、文といっしょに出す */
 function step1Retry(a){
  const L=S.L,ws=L.words.filter(w=>isTarget('m:'+w.w));
- if(!ws.length)return `<div class="card"><p>意味調べの解き直しはありません。</p></div>`+nextBtn(2,'次へ：かたまり');
+ if(!ws.length)return `<div class="card"><p>意味調べの練習はありません。</p></div>`+nextBtn(2,'次へ：かたまり');
  let h=`<p class="guide">もう一度、この文の中での意味を考えよう。</p>`;
  ws.forEach((w,i)=>{
   const s=L.sentences[w.sentence];
@@ -1108,7 +1184,7 @@ function chunkTips(L){
  return `<div class="tips"><b>区切り方のポイント</b><ul>${CHUNK_TIPS_1.map(t=>`<li>${esc(t)}</li>`).join('')}</ul></div>`;
 }
 function step2(a){
- if(S.mode==='retry'){const l=retrySents('c');if(!l.length)return `<div class="card"><p>かたまりの解き直しはありません。</p></div>`+nextBtn(3,'次へ：品詞');if(!l.includes(S.si))S.si=l[0]}
+ if(S.mode==='retry'){const l=retrySents('c');if(!l.length)return `<div class="card"><p>かたまりの練習はありません。</p></div>`+nextBtn(3,'次へ：品詞');if(!l.includes(S.si))S.si=l[0]}
  const si=S.si;
  let h=`<p class="guide">単語のあいだの点をタップすると区切り線が入ります。区切ったら、下のラベルをタップして役割を選ぼう。</p>${chunkTips(S.L)}
  <div class="legend">${roleSetOf(S.L).map(r=>ROLE_LEGEND[r]?`<span><b style="background:var(${ROLE_LEGEND[r][0]})">${esc(r)}</b>${ROLE_LEGEND[r][1]}</span>`:'').join('')}</div>`;
@@ -1155,7 +1231,7 @@ function posExamples(L){
  return `<details class="posex" data-keep="posex" ${S.posEx?'open':''}><summary>品詞の例</summary><dl>${list.map(p=>`<div><dt style="--c:var(${p.v})"><i></i>${esc(p.name)}</dt><dd>${esc(POS_EX[p.k])}</dd></div>`).join('')}</dl></details>`;
 }
 function step3(a){
- if(S.mode==='retry'){const l=retrySents('p');if(!l.length)return `<div class="card"><p>品詞の解き直しはありません。</p></div>`+nextBtn(4,'次へ：おわり');if(!l.includes(S.si))S.si=l[0]}
+ if(S.mode==='retry'){const l=retrySents('p');if(!l.length)return `<div class="card"><p>品詞の練習はありません。</p></div>`+nextBtn(4,'次へ：おわり');if(!l.includes(S.si))S.si=l[0]}
  const si=S.si,x=S.L.sentences[si];
  if(!['?','x'].includes(S.tool)&&!posSetOf(S.L).some(p=>p.k===S.tool))S.tool=posSetOf(S.L)[0].k;
  let h=`<p class="guide">色を選んでから単語をタップ。わからない単語には「？ わからない」をつけておこう。</p>`;
@@ -1189,13 +1265,13 @@ function step4(a){
  <textarea id="memo" data-in="memo" placeholder="例：told のあとの her が何かわからない">${esc(a.memo)}</textarea>
  <p><button class="primary" data-act="submit" ${S.submitting||!ready?'disabled':''}>${S.submitting?'送っています…':'提出する（1回だけ）'}</button></p></div>`;
 }
-/* 解き直しのおわり */
+/* 練習のおわり */
 function stepRetryEnd(){
  const R=S.rt,t=R.targets,c={o:0,t:0,x:0};
  t.forEach(k=>{const r=R.items[k]?.r;if(r)c[r]++});
  const left=t.length-c.o-c.t-c.x;
- return `<div class="card"><h2>解き直し</h2><p>${markBadge('o')} ${c.o+c.t}　${markBadge('x')} ${c.x}　（${t.length}問中）</p>
- ${left?`<p class="fixmsg">まだ ${left} 問のこっています。</p>`:`<p class="okc">解き直しが終わりました！ よくがんばったね。</p>`}
+ return `<div class="card"><h2>練習</h2><p>${markBadge('o')} ${c.o+c.t}　${markBadge('x')} ${c.x}　（${t.length}問中）</p>
+ ${left?`<p class="fixmsg">まだ ${left} 問のこっています。</p>`:`<p class="okc">練習が終わりました！ よくがんばったね。</p>`}
  <p><button class="primary" data-act="endretry">結果にもどる</button></p></div>`;
 }
 const nextBtn=(n,t)=>`<p><button class="secondary" data-act="step" data-v="${n}">${t}</button></p>`;
@@ -1212,24 +1288,17 @@ function resultView(r){
  const L=S.L;
  if(!r.checks)return resultViewOld(r);
  const C=r.cats||{},items=r.checks.items||{};
- const msg=r.rate>=90?'すばらしい！ほとんど全部正解です。':r.rate>=70?'いい調子です。✕ の問題は、解き直しでもう一度練習しよう。':'よくがんばったね。✕ の問題は、解き直しでもう一度練習しよう。わからない所は授業で先生と一緒に確認します。';
+ const msg=r.rate>=90?'すばらしい！ほとんど全部正解です。':r.rate>=70?'いい調子です。✕ の問題は、練習でもう一度取り組もう。':'よくがんばったね。✕ の問題は、練習でもう一度取り組もう。わからない所は授業で先生と一緒に確認します。';
  let h=`<div class="card"><div class="score"><div class="big">${r.rate}<small>%</small></div><div><p style="margin:0 0 4px;font-weight:700">${msg}</p>
  <p class="pvnote" style="margin:0 0 4px">数字は ◯ の割合です。</p>
  <div class="cats">${['意味','かたまり','品詞'].map(k=>{const v=C[k]||{};return `<span>${k} ${markBadge('o')}<b>${v.o||0}</b> ${markBadge('x')}<b>${(v.x||0)+(v.t||0)}</b></span>`}).join('')}</div></div></div>`;
  const tx=Object.entries(items).filter(([,it])=>it.r==='t'||it.r==='x');
  const R=S.rt;
- if(tx.length&&S.screen!=='preview'){
-  if(!R)h+=`<p><button class="primary" data-act="startretry" ${S.busy?'disabled':''}>解き直し（✕ の ${tx.length} 問）</button></p>`;
-  else{
-   const c={o:0,t:0,x:0};R.targets.forEach(k=>{const x=R.items[k]?.r;if(x)c[x]++});
-   h+=`<div class="banner" style="margin-top:8px">解き直し：${markBadge('o')} ${c.o+c.t}　${markBadge('x')} ${c.x}（${R.targets.length}問中）${R.finishedAt?'　終わりました ✓':'　とちゅうです'}
-   <p style="margin:6px 0 0"><button class="primary" data-act="contretry">${R.finishedAt?'見直す':'続きをする'}</button> <button class="secondary" data-act="startretry" ${S.busy?'disabled':''}>はじめから解き直す</button></p></div>`;
-  }
- }
  h+='</div>';
+ h+=practiceBox(tx.length,true);
  if(tx.length){
   const order=k=>k[0]==='m'?0:k[0]==='c'?1:2;
-  h+=`<div class="card"><h2>✕ の問題</h2><ul class="olist">${tx.sort((a,b)=>order(a[0])-order(b[0])).map(([k,it])=>`<li>${markBadge(it.r)}<span class="tagf">${k[0]==='m'?'意味':k[0]==='c'?'かたまり':'品詞'}</span>${itemLabel(L,k)}${it.f?`<span class="tagf">${REF[it.f]}</span>`:''}${R?.items?.[k]?.r?`<span class="muted">解き直し ${markBadge(R.items[k].r)}</span>`:''}</li>`).join('')}</ul></div>`;
+  h+=`<div class="card"><h2>✕ の問題</h2><ul class="olist">${tx.sort((a,b)=>order(a[0])-order(b[0])).map(([k,it])=>`<li>${markBadge(it.r)}<span class="tagf">${k[0]==='m'?'意味':k[0]==='c'?'かたまり':'品詞'}</span>${itemLabel(L,k)}${it.f?`<span class="tagf">${REF[it.f]}</span>`:''}${R?.items?.[k]?.r?`<span class="muted">練習 ${markBadge(R.items[k].r)}</span>`:''}</li>`).join('')}</ul></div>`;
  }else h+=`<div class="card"><p class="okc">全部 ◯ です！</p></div>`;
  return h+linesListen(L);
 }
@@ -1237,6 +1306,7 @@ function resultViewOld(r){
  const g=r.result,a=r.answers,L=S.L,M=g.marks;
  let h=`<div class="card"><div class="score"><div class="big">${g.rate}<small>%</small></div><div><p style="margin:0 0 4px;font-weight:700">前の形で提出した宿題です。</p>
  <div class="cats">${Object.entries(g.cats).map(([k,v])=>`<span>${k} <b>${v.hit}/${v.n}</b></span>`).join('')}</div></div></div></div>`;
+ h+=practiceBox(0,false)+linesListen(L);
  const J={pos:(si,ti)=>!!M.tok[si]?.[ti],chunk:(si,x,y)=>M.grp[si]?.[x+'-'+y]===true};
  L.sentences.forEach((s,si)=>{h+=`<div class="card"><div class="sno">文 ${si+1}</div>${reviewLine(L,si,a,J)}</div>`});
  h+=meaningTable(L.words.map(w=>({w:w.w,ans:(a.meanings[w.w]||'').trim(),ok:!!M.mean[w.w]})),false);
@@ -1301,11 +1371,11 @@ function teacherView(){
  const chk=subs.filter(x=>x.r.checkedAt).length;
  const qn=subs.reduce((t,x)=>t+Object.keys(x.r.answers.q).length,0);
  h+=`<div class="stats"><div>提出<b>${subs.length} / ${rows.length}人</b></div><div>平均正答率（◯の割合）<b>${avg}%</b></div><div>講師チェック済み<b>${chk} / ${subs.length}人</b></div><div>？の数<b>${qn}個</b></div></div>
- <div class="tw"><table class="roster"><thead><tr><th>生徒</th><th>状況</th><th>正答率（◯の割合・線＝70%）</th><th>◯ ✕</th><th>解き直し</th><th>？</th><th>チェック</th></tr></thead><tbody>`;
- if(!rows.length)h+=`<tr><td colspan="7" class="muted">このレッスンを配られた生徒がいません。教室長画面の「宿題の配布」で配ってください。</td></tr>`;
+ <div class="tw"><table class="roster"><thead><tr><th>生徒</th><th>状況</th><th>正答率（◯の割合・線＝70%）</th><th>◯ ✕</th><th>練習</th><th>？</th><th>チェック</th></tr></thead><tbody>`;
+ if(!rows.length)h+=`<tr><td colspan="7" class="muted">このレッスンに取り組んだ生徒も、宿題に出た生徒もいません。下の「宿題を出す」から出せます。</td></tr>`;
  rows.forEach(({s,r,g})=>{
   const st=!g?'<span class="st none">未提出</span>':r.checkedAt?'<span class="st done">チェック済み</span>':'<span class="st wait">チェック待ち</span>';
-  h+=`<tr class="row ${S.tsel===s.studentId?'sel':''}" data-act="trow" data-v="${esc(s.studentId)}" tabindex="0"><td><b>${esc(s.name)}</b></td><td>${st}</td>
+  h+=`<tr class="row ${S.tsel===s.studentId?'sel':''}" data-act="trow" data-v="${esc(s.studentId)}" tabindex="0"><td><b>${esc(s.name)}</b><br>${hwTag(s,r,T.today)}</td><td>${st}</td>
   <td>${g?`<span class="bar"><i class="${g.rate<70?'low':''}" style="width:${g.rate}%"></i><em style="left:70%"></em></span>${g.rate}%`:'<span class="muted">－</span>'}</td>
   <td>${g?.v5?oxtTotal(g.cats):g?Object.values(g.cats).map(v=>`${v.hit}/${v.n}`).join('　'):draftProgress(L,s)}</td>
   <td>${retryCell(s)}</td>
@@ -1313,10 +1383,39 @@ function teacherView(){
   <td class="muted">${r?.checkedAt?`${esc(fmt(r.checkedAt))}<br>${esc(r.checkedBy)}`:''}</td></tr>`;
  });
  h+=`</tbody></table></div>`;
+ h+=tAssignView(T);
  h+=classInsight(L,subs);
  h+=teacherLines(L);
  if(S.tsel)h+=detailView(L,S.tsel);
  h+=`<p class="foot">${esc(fmt(T.loadedAt))} の時点の情報です。<button class="secondary" data-act="treload">最新にする</button></p>`;
+ return h;
+}
+/* 宿題か自分で取り組んだか（宿題に出る前に提出したものも分かるように） */
+function hwTag(s,r,today){
+ const H=s.homework;
+ if(!H)return '<span class="hwtag self">自分で</span>';
+ const by=`${esc(H.assignedBy||'教室長')}`;
+ if(r&&H.assignedAt&&String(r.submittedAt)<String(H.assignedAt))return `<span class="hwtag before">宿題に出る前に提出</span>`;
+ if(!r&&isLate(H.dueDate,today))return `<span class="hwtag late">宿題・期限切れ（${esc(fmtDate(H.dueDate))}・${by}）</span>`;
+ return `<span class="hwtag">宿題${dkey(H.dueDate)?`（${esc(fmtDate(H.dueDate))}まで・${by}）`:`（${by}）`}</span>`;
+}
+/* 講師の「宿題を出す」 */
+function tAssignView(T){
+ const L=T.lesson,me=S.auth.teacherName,dis=S.tBusy?'disabled':'';
+ const hw=new Map(T.students.filter(s=>s.homework).map(s=>[s.studentId,s.homework]));
+ const all=S.tStudents||[];
+ const grades=[...new Set(all.map(s=>s.grade))].sort((a,b)=>(b===L.grade)-(a===L.grade)||String(a).localeCompare(String(b)));
+ let h=`<details class="card" data-keep="tasg" ${S.tAsgOpen?'open':''}><summary><h2 style="display:inline">宿題を出す（${hw.size}人に出ています）</h2></summary>
+ <p class="muted">このレッスンを宿題にします。生徒の一覧のいちばん上に「宿題」として出ます。もう出ている生徒にもう一度出すと、期限だけが新しくなります。取り消せるのは、自分が出した宿題だけです。</p>
+ <label class="field">期限（なくてもOK）<input type="date" data-in="tdue" value="${esc(S.tDue)}"></label>`;
+ if(S.tMsg2)h+=`<p class="okmsg">${esc(S.tMsg2)}</p>`;
+ if(!all.length)h+='<p class="muted">生徒がいません。</p>';
+ grades.forEach(g=>{
+  const list=all.filter(s=>s.grade===g);
+  h+=`<div class="sgrade"><h3>${esc(g||'学年なし')}</h3><button class="linkbtn" data-act="tgrade" data-v="${esc(g)}" data-on="1">全員えらぶ</button><button class="linkbtn" data-act="tgrade" data-v="${esc(g)}" data-on="0">えらぶのをやめる</button></div>`;
+  h+=list.map(s=>{const a=hw.get(s.studentId);return `<label class="stu"><input type="checkbox" data-in="tsel" value="${esc(s.studentId)}" ${S.tSel.has(s.studentId)?'checked':''}><span class="nm">${esc(s.studentId)}　${esc(s.name)}</span>${a?`<span class="st ${(a.assignedBy||'教室長')===me?'done':'wait'}">宿題${dkey(a.dueDate)?`（${esc(fmtDate(a.dueDate))}まで）`:''}・${esc(a.assignedBy||'教室長')}</span>`:''}</label>`}).join('');
+ });
+ h+=`<div class="btnrow"><button class="primary" data-act="tassign" ${dis}>${S.tBusy?'送っています…':`えらんだ生徒に宿題を出す（${S.tSel.size}人）`}</button><button class="secondary" data-act="tunassign" ${dis}>えらんだ生徒の宿題を取り消す</button></div></details>`;
  return h;
 }
 /* ◯✕ の合計（試作の △ が残っていれば小さく出す） */
@@ -1330,11 +1429,11 @@ function draftProgress(L,s){
  const d=Object.values(it).filter(x=>x.r).length;
  return `<span class="muted">確かめた ${d}/${s.total||'?'}</span>`;
 }
-/* 解き直しの結果 */
+/* 練習の結果（いちばん新しい練習） */
 function retryCell(s){
  const R=s.draft?.retry;if(!R?.targets)return '<span class="muted">－</span>';
  const c={o:0,t:0,x:0};R.targets.forEach(k=>{const r=R.items?.[k]?.r;if(r)c[r]++});
- return `◯${c.o}/${R.targets.length}${R.finishedAt?'':' <span class="muted">（とちゅう）</span>'}`;
+ return `<span class="muted">${R.count||1}回・${R.kind==='all'?'全部':'✕だけ'}</span><br>◯${c.o+c.t}/${R.targets.length}${R.finishedAt?'':' <span class="muted">（とちゅう）</span>'}`;
 }
 function classInsight(L,subs){
  if(subs.some(x=>x.g.v5))return classInsightV5(L,subs);
@@ -1382,7 +1481,7 @@ function keyInfo(L,k){
 function oxtItem(L,k,it,rt,sid){
  const ki=keyInfo(L,k),type=k[0]==='m'?'意味':k[0]==='c'?'かたまり':'品詞';
  const ovBtn=k[0]==='m'&&it.r==='x'&&String(it.a1||'').trim()&&sid?`<p style="margin:6px 0 0"><button class="secondary" data-act="tov" data-v="${esc(sid)}" data-k="${esc(k)}" ${S.checking?'disabled':''}>◯にする</button> <span class="muted">この答えでも正しいとき。次からこの答えは ◯ になります。</span></p>`:'';
- return `<div class="mk"><div class="mk-h">${markBadge(it.r)}<span class="mk-type t-${type}">${type}</span>${itemLabel(L,k)}${it.f?`<span class="qtag" style="color:var(--ng);border-color:var(--ng)">ふり返り：${REF[it.f]}</span>`:''}${rt?.r?`<span class="tagf">解き直し ${MARK[rt.r]}</span>`:''}</div>
+ return `<div class="mk"><div class="mk-h">${markBadge(it.r)}<span class="mk-type t-${type}">${type}</span>${itemLabel(L,k)}${it.f?`<span class="qtag" style="color:var(--ng);border-color:var(--ng)">ふり返り：${REF[it.f]}</span>`:''}${rt?.r?`<span class="tagf">練習 ${MARK[rt.r]}</span>`:''}</div>
  <div class="tries"><span class="was">生徒：${esc(ansText(L,k,it.a1))}</span><span class="right">正解：${esc(ki.key)}</span></div>
  <p class="why"><b>理由</b>${esc(ki.why)}</p><p class="ask"><b>聞き方</b>${esc(ki.ask)}</p>${ovBtn}</div>`;
 }
@@ -1418,10 +1517,10 @@ function detailViewV5(L,st){
  let h=`<div class="detail"><div class="card"><h2><span>${esc(st.name)}　${r.rate}%</span><span class="checkbar">${r.checkedAt?`<span class="muted">${esc(fmt(r.checkedAt))} ${esc(r.checkedBy)} がチェック</span><button class="secondary" data-act="uncheck" data-v="${esc(r.submissionId)}" ${dis}>取り消す</button>`:`<button class="primary" data-act="check" data-v="${esc(r.submissionId)}" ${dis}>${esc(S.auth.teacherName)}としてチェック済みにする</button>`}</span></h2>
  <p class="muted">${esc(fmt(r.submittedAt))} 提出・正答率は ◯ の割合</p>
  <div class="mcount">${['意味','かたまり','品詞'].map(k=>{const v=C[k]||{};return `<span class="t-${k}">${k} ◯${v.o||0} ✕${(v.x||0)+(v.t||0)}</span>`}).join('')}</div>
- ${rt?.targets?`<p class="muted" style="margin:6px 0 0">解き直し：${retryCell(st)}${rt.finishedAt?`（${esc(fmt(rt.finishedAt))}）`:''}</p>`:''}
+ ${rt?.targets?`<p class="muted" style="margin:6px 0 0">練習：${retryCell(st)}${rt.finishedAt?`（${esc(fmt(rt.finishedAt))}）`:''}</p>`:''}
  <h2 style="margin-top:12px">授業で聞くこと（✕ → ？ の順）</h2>${sc.length?`<ol class="scaf">${sc.map(x=>`<li>${esc(x)}</li>`).join('')}</ol>`:'<p class="muted">全部正解です。正確にできたことを具体的に認めて、文法に進みましょう。</p>'}
  ${r.answers.memo?`<h2 style="margin-top:12px">生徒からの質問</h2><p class="memo">${esc(r.answers.memo)}</p>`:''}</div>
- <h2 class="sech">✕ の問題</h2><p class="muted" style="margin-top:-4px">生徒の答え、正解・理由・聞き方。「解き直し」の印は、解き直しの結果です。</p>`;
+ <h2 class="sech">✕ の問題</h2><p class="muted" style="margin-top:-4px">生徒の答え、正解・理由・聞き方。「練習」の印は、練習の結果です。</p>`;
  const bad=([,it])=>it.r==='t'||it.r==='x';
  L.sentences.forEach((x,si)=>{
   const list=Object.entries(items).filter(([k])=>k[0]!=='m'&&+k.split(':')[1]===si).filter(bad);
@@ -1692,20 +1791,21 @@ async function saveLesson(){
 async function doAssign(on){
  const ids=[...S.aSel];
  if(!S.aLessonId||!ids.length){S.error='レッスンと生徒をえらんでください。';return render()}
- if(!on&&!confirm(`えらんだ ${ids.length} 人の配布を取り消しますか？（下書きと提出は消えません）`))return;
+ if(!on&&!confirm(`えらんだ ${ids.length} 人の宿題を取り消しますか？（下書きと提出は消えません）`))return;
  S.aBusy=true;S.error='';S.aMsg='';render();
  try{
   const j=await api(on?'assign':'unassign',{lessonId:S.aLessonId,studentIds:ids,dueDate:S.aDue});
-  S.aMsg=on?`配りました（新しく ${j.added} 人、期限を直した人 ${j.updated} 人）。`:`${j.removed} 人の配布を取り消しました。`;
+  S.aMsg=on?`宿題を出しました（新しく ${j.added} 人、期限を直した人 ${j.updated} 人）。`:`${j.removed} 人の宿題を取り消しました。`;
   S.aSel=new Set();S.aBusy=false;return loadAdmin();
  }catch(e){handleError(e)}
  S.aBusy=false;render();
 }
 function adminView(){
  const tab=(v,lab)=>`<button data-act="atab" data-v="${v}" aria-pressed="${S.atab===v}">${lab}</button>`;
- let h=`<section class="lhead"><div><p class="unit">教室長</p><h1>${S.atab==='lesson'?'レッスン登録':'宿題の配布'}</h1></div>
+ let h=`<section class="lhead"><div><p class="unit">教室長</p><h1>${S.atab==='lesson'?'レッスン登録':S.atab==='prog'?'進み具合':'宿題の配布'}</h1></div>
  <div class="tctl"><button class="secondary" data-act="areload">最新にする</button></div></section>
- <nav class="tabs" aria-label="教室長のメニュー">${tab('lesson','レッスン登録')}${tab('assign','宿題の配布')}</nav>`;
+ <nav class="tabs" aria-label="教室長のメニュー">${tab('lesson','レッスン登録')}${tab('assign','宿題の配布')}${tab('prog','進み具合')}</nav>`;
+ if(S.atab==='prog')return h+progressView();
  if(!S.aData)return h+loadingView();
  return h+(S.atab==='lesson'?adminLessonView():adminAssignView());
 }
@@ -1791,6 +1891,88 @@ function adminLessonView(){
  h+=`<div class="card"><h2>登録ずみのレッスン（${ls.length}件）</h2>${ls.length?ls.map(l=>`<div class="lrow"><div><b>${esc(l.title)}</b>${srcLine(l.source)||'<p class="src ngc">出典がありません（生徒に出せません）</p>'}<span class="muted">${esc(l.lessonId)}・${esc(l.grade)}${l.note?`・${esc(l.note)}`:''}・提出 ${l.submissions}件${l.updatedAt?`・${esc(fmt(l.updatedAt))} 更新`:''}</span>${illInfo(l.lessonId)}</div><button class="secondary" data-act="aload" data-v="${esc(l.lessonId)}" ${dis}>読みこんで直す</button></div>`).join(''):'<p class="muted">まだありません。</p>'}</div>`;
  return h;
 }
+/* ===== 進み具合（教室長） ===== */
+async function loadProgress(){
+ S.pLoading=true;S.error='';render();
+ try{
+  const j=await api('progressData');S.pData=j;
+  const gs=[...new Set(j.lessons.map(l=>l.grade))];
+  if(!gs.includes(S.pGrade))S.pGrade=gs[0]||'';
+ }catch(e){handleError(e)}
+ S.pLoading=false;render();
+}
+/* 表の見出し用の短い名前（U4-P2 など） */
+function shortName(l){
+ const m=/Unit\s*(\d+)[^\d]*?Part\s*(\d+)/i.exec(`${l.title} ${l.note}`);
+ return m?`U${m[1]}-P${m[2]}`:l.lessonId;
+}
+/* 1つのます（生徒 × レッスン）の状態 */
+function pState(c,total,today){
+ if(!c)return{k:'',t:''};
+ const pr=c.practice?`<small> 練${c.practice}</small>`:'';
+ if(c.sub){
+  const pre=c.hw&&c.hw.at&&String(c.sub.at)<String(c.hw.at)?'<small>前</small>':'';
+  return{k:c.sub.rate<70?'k-low':'k-ok',t:`${c.sub.rate}%${c.sub.checkedAt?'✓':''}${pre}${pr}`};
+ }
+ if(c.hw&&isLate(c.hw.due,today))return{k:'k-late',t:`期限切れ${c.started?`<small> ${c.done||0}/${total||'?'}</small>`:''}`};
+ if(c.started)return{k:'k-go',t:`とちゅう<small> ${c.done||0}/${total||'?'}</small>`};
+ if(c.hw)return{k:'k-hw',t:`宿題${dkey(c.hw.due)?`<small> ${esc(fmtDate(c.hw.due))}</small>`:''}`};
+ return{k:'',t:''};
+}
+function progressView(){
+ const P=S.pData;
+ if(!P)return S.pLoading?loadingView():`<div class="card"><p class="muted">読みこめませんでした。「最新にする」を押してください。</p></div>`;
+ const today=P.today,gs=[...new Set(P.lessons.map(l=>l.grade))];
+ const ls=P.lessons.filter(l=>l.grade===S.pGrade),st=P.students.filter(s=>s.grade===S.pGrade);
+ const C=P.cells,cs=Object.entries(C).map(([k,c])=>{const[sid,lid]=k.split('|');return{sid,lid,c}});
+ const nm=Object.fromEntries(P.students.map(s=>[s.studentId,s])),lt=Object.fromEntries(P.lessons.map(l=>[l.lessonId,l]));
+ const live=cs.filter(x=>nm[x.sid]&&lt[x.lid]);
+ /* 数のまとめ */
+ const wait=live.filter(x=>x.c.sub&&!x.c.sub.checkedAt).length;
+ const late=live.filter(x=>x.c.hw&&!x.c.sub&&isLate(x.c.hw.due,today)).sort((a,b)=>dkey(a.c.hw.due).localeCompare(dkey(b.c.hw.due)));
+ const open=live.filter(x=>x.c.hw&&!x.c.sub).length;
+ let h=`<div class="stats"><div>出ている宿題（まだ提出していない）<b>${open}件</b></div><div>期限が過ぎた宿題<b class="${late.length?'ngc':''}">${late.length}件</b></div><div>チェック待ちの提出<b>${wait}件</b></div></div>`;
+ /* 学年をえらぶ */
+ h+=`<nav class="tabs" aria-label="学年">${gs.map(g=>`<button data-act="pgrade" data-v="${esc(g)}" aria-pressed="${S.pGrade===g}">${esc(g||'学年なし')}</button>`).join('')}</nav>`;
+ h+=`<div class="card"><h2>生徒 × レッスン（${esc(S.pGrade)}）</h2>
+ <div class="legendp"><span><i class="k-hw"></i>宿題に出た（まだ）</span><span><i class="k-go"></i>取り組み中</span><span><i class="k-late"></i>宿題の期限切れ</span><span><i class="k-ok"></i>提出（◯ 70%以上）</span><span><i class="k-low"></i>提出（70%未満）</span><span>✓ 講師チェック済み</span><span>前＝宿題に出る前に提出</span><span>練＝練習の回数</span></div>`;
+ if(!st.length||!ls.length)h+='<p class="muted">この学年の生徒かレッスンがありません。</p>';
+ else{
+  h+=`<div class="tw"><table class="pg"><thead><tr><th>生徒</th>${ls.map(l=>`<th title="${esc(l.title)}">${esc(shortName(l))}</th>`).join('')}<th>提出</th></tr></thead><tbody>`;
+  st.forEach(s=>{
+   const n=ls.filter(l=>C[s.studentId+'|'+l.lessonId]?.sub).length;
+   h+=`<tr><td><b>${esc(s.name)}</b></td>${ls.map(l=>{const key=s.studentId+'|'+l.lessonId,x=pState(C[key],P.totals[l.lessonId],today);return `<td class="c ${x.k} ${S.pSel===key?'sel':''}" data-act="pcell" data-v="${esc(key)}">${x.t}</td>`}).join('')}<td>${n}/${ls.length}</td></tr>`;
+  });
+  h+=`</tbody></table></div>`;
+ }
+ if(S.pSel){
+  const[sid,lid]=S.pSel.split('|'),c=C[S.pSel]||{},L=lt[lid],sx=nm[sid];
+  if(L&&sx){
+   const sub=c.sub;
+   h+=`<div class="banner" style="margin-top:10px"><b>${esc(sx.name)}</b>　${esc(L.title)}<br>
+   ${c.hw?`宿題：${dkey(c.hw.due)?`期限 ${esc(fmtDate(c.hw.due))}`:'期限なし'}・出した人 ${esc(c.hw.by)}${c.hw.at?`（${esc(fmt(c.hw.at))}）`:''}`:'宿題には出ていません'}<br>
+   ${sub?`提出：${esc(fmt(sub.at))}・◯ ${sub.rate}%・${sub.checkedAt?`チェック ${esc(sub.checkedBy)}（${esc(fmt(sub.checkedAt))}）`:'チェック待ち'}`:c.started?`取り組み中：確かめた ${c.done||0}/${P.totals[lid]||'?'}`:'まだ取り組んでいません'}
+   ${c.practice?`<br>練習：${c.practice}回`:''}</div>`;
+  }
+ }
+ h+='</div>';
+ /* 期限が過ぎた宿題 */
+ h+=`<div class="card"><h2>期限が過ぎて、まだ提出していない宿題（${late.length}件）</h2>`;
+ h+=late.length?`<table class="mlist">${late.map(x=>`<tr><td>${esc(nm[x.sid].name)}<span class="muted">（${esc(nm[x.sid].grade)}）</span></td><td>${esc(lt[x.lid].title)}</td><td class="ngc">${esc(fmtDate(x.c.hw.due))}</td><td class="muted">${esc(x.c.hw.by)}${x.c.started?`・とちゅう ${x.c.done||0}/${P.totals[x.lid]||'?'}`:'・まだ'}</td></tr>`).join('')}</table>`:'<p class="muted">ありません。</p>';
+ h+='</div>';
+ /* 講師ごと */
+ const names=[...new Set([...P.teachers,'教室長',...live.filter(x=>x.c.hw).map(x=>x.c.hw.by),...live.filter(x=>x.c.sub?.checkedBy).map(x=>x.c.sub.checkedBy)])];
+ h+=`<div class="card"><h2>講師ごと</h2><div class="tw"><table class="roster"><thead><tr><th>先生</th><th>出した宿題</th><th>そのうち提出</th><th>そのうちチェック待ち</th><th>チェックした数</th></tr></thead><tbody>`;
+ names.forEach(t=>{
+  const mine=live.filter(x=>x.c.hw&&x.c.hw.by===t),sub=mine.filter(x=>x.c.sub);
+  const w=sub.filter(x=>!x.c.sub.checkedAt).length,ck=live.filter(x=>x.c.sub?.checkedBy===t).length;
+  if(t==='教室長'&&!mine.length&&!ck)return;
+  h+=`<tr><td><b>${esc(t)}</b></td><td>${mine.length}</td><td>${sub.length}</td><td>${w?`<span class="st wait">${w}</span>`:'0'}</td><td>${ck}</td></tr>`;
+ });
+ h+=`</tbody></table></div><p class="muted">「チェックした数」は、その先生がチェック済みにした提出の数です（だれが出した宿題かに関係なく数えます）。</p></div>`;
+ h+=`<p class="foot">${esc(fmt(P.loadedAt))} の時点の情報です。</p>`;
+ return h;
+}
 function adminAssignView(){
  const D=S.aData,dis=S.aBusy?'disabled':'';
  if(!D.lessons.length)return `<div class="card"><p>先に「レッスン登録」でレッスンを入れてください。</p></div>`;
@@ -1799,7 +1981,7 @@ function adminAssignView(){
  let h=`<div class="card"><label class="field">レッスン<select data-in="alesson">${D.lessons.map(l=>`<option value="${esc(l.lessonId)}" ${l.lessonId===S.aLessonId?'selected':''}>${esc(l.grade)} ${esc(l.title)}</option>`).join('')}</select></label>
  ${cur?srcLine(cur.source):''}
  <label class="field">期限（なくてもOK）<input type="date" data-in="adue" value="${esc(S.aDue)}"></label>
- <p class="muted">配ったレッスンだけが、生徒の宿題の一覧に出ます。もう配った生徒にもう一度配ると、期限だけが新しくなります。</p></div>`;
+ <p class="muted">宿題に出したレッスンは、生徒の一覧のいちばん上に「宿題」として出ます（学年のレッスンは、宿題でなくても全部開けます）。もう出ている生徒にもう一度出すと、期限だけが新しくなります。講師も、講師画面から宿題を出せます。</p></div>`;
  if(S.aMsg)h+=`<p class="okmsg">${esc(S.aMsg)}</p>`;
  const grades=[...new Set(D.students.map(s=>s.grade))].sort();
  h+=`<div class="card"><h2>生徒をえらぶ（${S.aSel.size}人えらんでいます）</h2>`;
@@ -1807,9 +1989,9 @@ function adminAssignView(){
  grades.forEach(g=>{
   const list=D.students.filter(s=>s.grade===g);
   h+=`<div class="sgrade"><h3>${esc(g||'学年なし')}</h3><button class="linkbtn" data-act="agrade" data-v="${esc(g)}" data-on="1">全員えらぶ</button><button class="linkbtn" data-act="agrade" data-v="${esc(g)}" data-on="0">えらぶのをやめる</button></div>`;
-  h+=list.map(s=>{const a=asg.get(s.studentId);return `<label class="stu"><input type="checkbox" data-in="asel" value="${esc(s.studentId)}" ${S.aSel.has(s.studentId)?'checked':''}><span class="nm">${esc(s.studentId)}　${esc(s.name)}</span>${a?`<span class="st done">配布ずみ${a.dueDate?`（期限 ${esc(fmtDate(a.dueDate))}）`:''}</span>`:''}${s.hasPin?'':'<span class="st wait">PIN なし</span>'}</label>`}).join('');
+  h+=list.map(s=>{const a=asg.get(s.studentId);return `<label class="stu"><input type="checkbox" data-in="asel" value="${esc(s.studentId)}" ${S.aSel.has(s.studentId)?'checked':''}><span class="nm">${esc(s.studentId)}　${esc(s.name)}</span>${a?`<span class="st done">宿題${a.dueDate?`（期限 ${esc(fmtDate(a.dueDate))}）`:''}・${esc(a.assignedBy||'教室長')}</span>`:''}${s.hasPin?'':'<span class="st wait">PIN なし</span>'}</label>`}).join('');
  });
- h+=`<div class="btnrow"><button class="primary" data-act="aassign" ${dis}>${S.aBusy?'送っています…':'えらんだ生徒に配る'}</button><button class="secondary" data-act="aunassign" ${dis}>えらんだ生徒の配布を取り消す</button></div></div>`;
+ h+=`<div class="btnrow"><button class="primary" data-act="aassign" ${dis}>${S.aBusy?'送っています…':'えらんだ生徒に宿題を出す'}</button><button class="secondary" data-act="aunassign" ${dis}>えらんだ生徒の宿題を取り消す</button></div></div>`;
  return h;
 }
 
@@ -1843,7 +2025,7 @@ document.addEventListener('click',e=>{
  else if(act==='showres'){S.showResult=true}
  else if(act==='ck'){doCheck(el.dataset.kind,el.dataset.v);return}
  else if(act==='refl'){doReflect(el.dataset.k,el.dataset.f);return}
- else if(act==='startretry'){if(S.rt&&!confirm('解き直しを、はじめからやり直しますか？'))return;startRetry();return}
+ else if(act==='startretry'){const k=el.dataset.v==='all'?'all':'x';if(S.rt?.targets&&!S.rt.finishedAt&&!confirm('とちゅうの練習があります。新しい練習をはじめますか？'))return;startRetry(k);return}
  else if(act==='contretry'){enterRetry()}
  else if(act==='endretry'){S.mode='main';S.showResult=true;window.scrollTo(0,0)}
  else if(act==='trow'){S.tsel=el.dataset.v;S.tMsg=''}
@@ -1851,8 +2033,13 @@ document.addEventListener('click',e=>{
  else if(act==='uncheck'){setCheck(el.dataset.v,false);return}
  else if(act==='tov'){overrideMeaning(el.dataset.v,el.dataset.k);return}
  else if(act==='treload'){loadTeacher();return}
- else if(act==='atab'){S.atab=el.dataset.v;S.aMsg=''}
- else if(act==='areload'){loadAdmin();return}
+ else if(act==='tassign'){doTAssign(true);return}
+ else if(act==='tunassign'){doTAssign(false);return}
+ else if(act==='tgrade'){(S.tStudents||[]).filter(s=>s.grade===el.dataset.v).forEach(s=>el.dataset.on==='1'?S.tSel.add(s.studentId):S.tSel.delete(s.studentId))}
+ else if(act==='pcell'){S.pSel=S.pSel===el.dataset.v?'':el.dataset.v}
+ else if(act==='pgrade'){S.pGrade=el.dataset.v;S.pSel=''}
+ else if(act==='atab'){S.atab=el.dataset.v;S.aMsg='';if(S.atab==='prog'&&!S.pData){loadProgress();return}}
+ else if(act==='areload'){if(S.atab==='prog'){loadProgress();return}loadAdmin();return}
  else if(act==='acheck'){checkLessonJson()}
  else if(act==='apreview'){openPreview(+el.dataset.v||0);return}
  else if(act==='asave'){saveLesson();return}
@@ -1884,14 +2071,16 @@ document.addEventListener('input',e=>{
 });
 document.addEventListener('change',e=>{
  const el=e.target,k=el.dataset.in;
- if(k==='tlesson'){S.tLessonId=el.value;S.tsel='';S.tData=null;saveLogin();loadTeacher()}
+ if(k==='tlesson'){S.tLessonId=el.value;S.tsel='';S.tData=null;S.tSel=new Set();S.tMsg2='';saveLogin();loadTeacher()}
  else if(k==='tname'){S.form[k]=el.value}
  else if(k==='alesson'){S.aLessonId=el.value;S.aSel=new Set();render()}
  else if(k==='adue'){S.aDue=el.value}
  else if(k==='aill'){uploadIlls([...el.files]);el.value=''}
  else if(k==='asel'){el.checked?S.aSel.add(el.value):S.aSel.delete(el.value);render()}
+ else if(k==='tsel'){el.checked?S.tSel.add(el.value):S.tSel.delete(el.value);render()}
+ else if(k==='tdue'){S.tDue=el.value}
 });
-document.addEventListener('toggle',e=>{if(e.target.dataset?.keep==='posex')S.posEx=e.target.open},true);
+document.addEventListener('toggle',e=>{if(e.target.dataset?.keep==='posex')S.posEx=e.target.open;if(e.target.dataset?.keep==='tasg')S.tAsgOpen=e.target.open},true);
 window.addEventListener('pagehide',()=>{ttsStop();beaconFlush()});
 document.addEventListener('toggle',e=>{if(e.target.dataset?.keep==='listen'){S.listenOpen=e.target.open;if(!e.target.open)ttsStop()}},true);
 document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='hidden')beaconFlush()});

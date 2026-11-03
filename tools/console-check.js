@@ -1,5 +1,5 @@
 /*
- * 本文分析ノート 動作確認スクリプト（v7 用）
+ * 本文分析ノート 動作確認スクリプト（v8 用）
  *
  * 使い方
  *   1. Chrome で index.html を開き、ログインする（生徒・講師・教室長のどれでもよい）。
@@ -18,6 +18,9 @@
  *   ・レッスンに出典（source）が入っているか
  *   ・（教室長）まとめて保存するとき、まちがいが1つでもあれば何も保存されないか
  *   ・（生徒）意味調べのせりふに、新出単語の意味と訳の答えが入っていないか
+ *   ・（生徒）v8：宿題の一覧に、学年のレッスンが全部出るか。練習の問題に、まだ確かめていないかたまりの答えが入っていないか
+ *   ・（講師）v8：講師も宿題を出せるか（出す操作の権限）。講師は「進み具合」を見られないか
+ *   ・（教室長）v8：進み具合のデータが読めるか
  *   ・挿絵がもらえるか、配られていない人にはもらえないか（挿絵を受けとる時間も測ります）
  *   ・（生徒）まだ確かめていない問題の答えが届いていないか。ログインしていない人や講師は「確かめる」を使えないか
  *   ・英語の読み上げの声が、このタブレットにあるか（声の名前を出します。音は出しません）
@@ -80,13 +83,17 @@
     await step('まちがった PIN はことわる', () => expectFail(HC.api('login', { role: 'student', studentId: 'no-such-' + Date.now(), pin: '0000' }), ['login', 'locked']));
     await step('生徒の通行証では答えをもらえない', () => expectFail(HC.api('listLessons'), ['auth']));
     await step('生徒の通行証では教室長の操作はできない', () => expectFail(HC.api('adminData'), ['auth']));
+    await step('生徒は宿題を出せない', () => expectFail(HC.api('assign', { lessonId: 'x', studentIds: [] }), ['auth']));
+    await step('生徒は進み具合を見られない', () => expectFail(HC.api('progressData'), ['auth']));
     let lessonId = S.L?.lessonId;
     await step('宿題の一覧', async () => {
       const j = await HC.api('listAssignments');
       lessonId = lessonId || j.lessons[0]?.lessonId;
       const noSrc = j.lessons.filter(l => !l.source);
       if (noSrc.length) throw new Error('出典がないレッスン：' + noSrc.map(l => l.lessonId).join(', '));
-      return `${j.lessons.length}件・どれも出典あり`;
+      const hw = j.lessons.filter(l => l.homework);
+      const late = hw.filter(l => !l.attempts && l.dueDate && j.today && l.dueDate < j.today.slice(0, 10));
+      return `${j.lessons.length}件（宿題 ${hw.length}件・期限切れ ${late.length}件）・どれも出典あり`;
     });
     if (lessonId) {
       await step('レッスンを開く', async () => {
@@ -101,7 +108,10 @@
         const items = Object.entries(j.checks?.items || {});
         const early = items.filter(([k, it]) => !it.r && (k[0] === 'c' || it.ans !== undefined || it.why !== undefined));
         if (early.length) throw new Error('まだ確かめていない問題の答えが入っている：' + early.length + 'つ');
-        return `${j.lesson.sentences.length}文・せりふ ${lines.length}・確かめた問題 ${items.filter(([, it]) => it.r).length}/${j.total}・答えは入っていない・出典あり`;
+        // v8：練習（とくに「全部もう一度」）で、まだ確かめていないかたまりの場所が入っていないこと
+        const rt = j.retry;
+        if (rt && rt.kind === 'all' && (rt.targets || []).some(k => /^c:\d+:\d+-\d+$/.test(k) && !rt.items?.[k]?.r)) throw new Error('練習の問題に、かたまりの答えが入っている');
+        return `${j.lesson.sentences.length}文・せりふ ${lines.length}${rt ? `・練習 ${rt.count || 1}回目（${rt.kind === 'all' ? '全部' : '✕だけ'}）` : ''}・確かめた問題 ${items.filter(([, it]) => it.r).length}/${j.total}・答えは入っていない・出典あり`;
       });
       await step('生徒は、意味調べの ✕ を ◯ にできない', () => expectFail(HC.api('overrideMeaning', { submissionId: 'x', key: 'm:x' }), ['auth']));
       await step('画面の採点：書き方のちがいを同じとみなす', async () => {
@@ -123,11 +133,13 @@
     await step('講師の通行証では教室長の操作はできない', () => expectFail(HC.api('adminData'), ['auth']));
     await step('意味調べの ✕ を ◯ にする操作は、ない提出ではことわる', () => expectFail(HC.api('overrideMeaning', { submissionId: 'no-such-' + Date.now(), key: 'm:x' }), ['']));
     await step('講師の通行証では生徒の「確かめる」は使えない', () => expectFail(HC.api('checkItem', { lessonId: S.tLessonId || 'x', kind: 'mean', w: 'x', answers: {} }), ['auth']));
-    await step('レッスンの一覧（講師）', async () => { const j = await HC.api('listLessons'); return `${j.lessons.length}件`; });
+    await step('レッスンの一覧（講師）', async () => { const j = await HC.api('listLessons'); return `${j.lessons.length}件・生徒 ${(j.students || []).length}人`; });
+    await step('講師は進み具合を見られない（教室長だけ）', () => expectFail(HC.api('progressData'), ['auth']));
+    await step('講師も宿題を出す操作ができる（生徒をえらばないとことわる）', () => expectFail(HC.api('assign', { lessonId: S.tLessonId || 'x', studentIds: [] }), ['']));
     if (S.tLessonId) {
       await step('提出の一覧（講師）', async () => {
         const j = await HC.api('listSubmissions', { lessonId: S.tLessonId });
-        return `${j.students.length}人・提出 ${j.students.filter(s => s.latest).length}人`;
+        return `${j.students.length}人・宿題 ${j.students.filter(s => s.homework).length}人・提出 ${j.students.filter(s => s.latest).length}人`;
       });
     }
   } else if (role === 'admin') {
@@ -138,6 +150,12 @@
       if (!j.illustrations) throw new Error('挿絵のフォルダがない（Apps Script で setup を実行してください）');
       const noIll = j.lessons.filter(l => !j.illustrations[l.lessonId]).length;
       return `レッスン ${j.lessons.length}件・生徒 ${j.students.length}人・配布 ${j.assignments.length}件・挿絵がないレッスン ${noIll}件`;
+    });
+    await step('進み具合（v8）', async () => {
+      const j = await HC.api('progressData');
+      const cs = Object.values(j.cells);
+      const late = cs.filter(c => c.hw && !c.sub && c.hw.due && c.hw.due < j.today.slice(0, 10)).length;
+      return `生徒 ${j.students.length}人・レッスン ${j.lessons.length}件・宿題 ${cs.filter(c => c.hw).length}件（期限切れ ${late}件）・提出 ${cs.filter(c => c.sub).length}件`;
     });
     await step('出典がないレッスンは保存できない', async () => {
       const j = await HC.api('upsertLesson', { lesson: { lessonId: 'CHECK-NOSOURCE', grade: '中1', title: 'check', source: '', posSet: ['名'], roleSet: ['S'], sentences: [{ tokens: [{ w: 'Hi', pos: '名' }], chunks: [{ from: 0, to: 0, role: 'S' }] }] } });

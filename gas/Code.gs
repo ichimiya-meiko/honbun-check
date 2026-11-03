@@ -1,6 +1,6 @@
 /**
  * 本文分析ノート（honbun-check） GAS バックエンド
- * v6（意味調べの書き方のちがい（漢字・ひらがな・カタカナ・全角半角・空白）を同じとみなす。講師が意味調べの ✕ を ◯ にでき、その答えをレッスンの正解の言葉に足す）
+ * v8（生徒は自分の学年のレッスンを全部開ける。宿題は講師も出せる（出した講師を記録）。提出後の練習（✕ の問題だけ／全部もう一度）。教室長の進み具合）
  *
  * ・すべて doPost で JSON を受け取り、action で分ける。
  * ・答え（pos / alt / chunks / role / ok / why / example）は講師・教室長の操作でしか返さない。
@@ -10,14 +10,14 @@
  * ・パスワードは Settings にハッシュ（SHA-256）で置く。平文で書かれていたら、次に使うときにハッシュにして平文を消す。
  */
 
-const VERSION = 6;
+const VERSION = 8;
 const TZ = 'Asia/Tokyo';
 
 const SHEETS = {
   Lessons: ['lessonId', 'grade', 'textbook', 'unit', 'part', 'title', 'json', 'updatedAt'],
   Students: ['studentId', 'name', 'grade', 'pin', 'active'],
   Teachers: ['teacherId', 'name', 'active'],
-  Assignments: ['assignmentId', 'lessonId', 'studentId', 'dueDate', 'createdAt'],
+  Assignments: ['assignmentId', 'lessonId', 'studentId', 'dueDate', 'createdAt', 'assignedBy'],
   Drafts: ['studentId', 'lessonId', 'answersJson', 'updatedAt'],
   Submissions: ['submissionId', 'studentId', 'lessonId', 'attempt', 'answersJson', 'rate', 'catScoresJson', 'qCount', 'submittedAt', 'checkedBy', 'checkedAt'],
   Settings: ['key', 'value']
@@ -79,8 +79,9 @@ const ACTIONS = {
   getLessonJson: { role: 'admin', fn: getLessonJson },
   upsertLesson: { role: 'admin', fn: upsertLesson },
   upsertLessons: { role: 'admin', fn: upsertLessons },
-  assign: { role: 'admin', fn: assign },
-  unassign: { role: 'admin', fn: unassign },
+  assign: { role: ['teacher', 'admin'], fn: assign },
+  unassign: { role: ['teacher', 'admin'], fn: unassign },
+  progressData: { role: 'admin', fn: progressData },
   uploadIllustration: { role: 'admin', fn: uploadIllustration },
   deleteIllustration: { role: 'admin', fn: deleteIllustration },
   getIllustrations: { role: ['student', 'teacher', 'admin'], fn: getIllustrations }
@@ -283,6 +284,14 @@ function writeRow(s, row, head, obj) {
   s.getRange(row, 1, 1, head.length).setNumberFormats([fm]).setValues([vals]);
 }
 
+/** 見出しに列がなければ、いちばん右に足す（v8 の assignedBy など。setup をし直さなくてよい） */
+function ensureColumn(name, col) {
+  const s = sheet(name);
+  if (header(s).indexOf(col) >= 0) return;
+  s.getRange(1, s.getLastColumn() + 1).setValue(col).setFontWeight('bold');
+  delete MEMO[name];
+}
+
 function appendObj(name, obj) {
   delete MEMO[name];
   const s = sheet(name);
@@ -446,10 +455,11 @@ function publicLine(l) {
 function lessonsForStudent(st) {
   const lessons = rows('Lessons').filter(r => r.lessonId.trim());
   const key = r => ({ grade: r.grade.trim(), unit: r.unit, part: r.part, lessonId: r.lessonId.trim() });
-  return rows('Assignments').filter(a => a.studentId.trim() === st.studentId).map(a => {
-    const l = lessons.find(r => r.lessonId.trim() === a.lessonId.trim());
-    return l ? { row: l, dueDate: a.dueDate } : null;
-  }).filter(Boolean).sort((a, b) => byUnitPart(key(a.row), key(b.row)));
+  const asg = rows('Assignments').filter(a => a.studentId.trim() === st.studentId);
+  return lessons.filter(r => r.grade.trim() === st.grade || asg.some(a => a.lessonId.trim() === r.lessonId.trim())).map(r => {
+    const a = asg.find(x => x.lessonId.trim() === r.lessonId.trim());
+    return { row: r, homework: !!a, dueDate: a ? a.dueDate : '', assignedBy: a ? (a.assignedBy || '教室長') : '', assignedAt: a ? a.createdAt : '' };
+  }).sort((a, b) => byUnitPart(key(a.row), key(b.row)));
 }
 
 /** 配られたレッスンの ID（一時置き場に5分置く） */
@@ -466,16 +476,24 @@ function forgetAssigned(studentIds) {
   CacheService.getScriptCache().removeAll(studentIds.map(id => 'A:' + id));
 }
 
+/** 生徒が開けるレッスンか（自分の学年のレッスン、または宿題に出たレッスン） */
 function assertAssigned(st, lessonId) {
-  if (assignedIds(st).indexOf(String(lessonId).trim()) < 0) {
-    throw userError('このレッスンはまだ配られていません。');
-  }
+  const id = String(lessonId).trim();
+  if (assignedIds(st).indexOf(id) >= 0) return;
+  const r = lessonRow(id);
+  if (!r || String(r.grade).trim() !== st.grade) throw userError('このレッスンは開けません。');
 }
 
 /** その講師画面に出す生徒（そのレッスンを配られた生徒） */
 function studentsForLesson(L) {
-  const ids = rows('Assignments').filter(a => a.lessonId.trim() === L.lessonId).map(a => a.studentId.trim());
-  return activeStudents().filter(s => ids.indexOf(s.studentId) >= 0);
+  const asg = rows('Assignments').filter(a => a.lessonId.trim() === L.lessonId);
+  const started = {};
+  rows('Drafts').forEach(d => { if (d.lessonId.trim() === L.lessonId) started[d.studentId.trim()] = true; });
+  rows('Submissions').forEach(d => { if (d.lessonId.trim() === L.lessonId) started[d.studentId.trim()] = true; });
+  return activeStudents().filter(s => started[s.studentId] || asg.some(a => a.studentId.trim() === s.studentId)).map(s => {
+    const a = asg.find(x => x.studentId.trim() === s.studentId);
+    return Object.assign({}, s, { homework: a ? { dueDate: a.dueDate, assignedBy: a.assignedBy || '教室長', assignedAt: a.createdAt } : null });
+  });
 }
 
 function submissionsOf(studentId, lessonId) {
@@ -709,23 +727,27 @@ function listAssignments(req) {
   const st = findStudent(req.who.id);
   const subs = rows('Submissions').filter(r => r.studentId.trim() === st.studentId);
   const drafts = rows('Drafts').filter(r => r.studentId.trim() === st.studentId);
-  const lessons = lessonsForStudent(st).map(({ row, dueDate }) => {
+  const lessons = lessonsForStudent(st).map(({ row, homework, dueDate, assignedBy }) => {
     const id = row.lessonId.trim();
     const mine = subs.filter(r => r.lessonId.trim() === id).sort((a, b) => Number(a.attempt) - Number(b.attempt));
     const last = mine[mine.length - 1];
+    const d = drafts.find(x => x.lessonId.trim() === id);
+    const practice = d ? (parseJson(d.answersJson, {}).retry || null) : null;
     return {
       lessonId: id,
       title: row.title || id,
       note: noteOf(row),
       source: sourceOf(row),
-      dueDate: dueDate,
-      hasDraft: drafts.some(d => d.lessonId.trim() === id),
+      homework, dueDate, assignedBy,
+      hasDraft: !!d,
       attempts: last ? Number(last.attempt) : 0,
       rate: last ? Number(last.rate) : null,
-      checked: last ? !!last.checkedAt : false
+      submittedAt: last ? last.submittedAt : '',
+      checked: last ? !!last.checkedAt : false,
+      practiceCount: practice && practice.targets ? (practice.count || 1) : 0
     };
   });
-  return { lessons };
+  return { lessons, today: Utilities.formatDate(new Date(), TZ, 'yyyy/MM/dd') };
 }
 
 function getLessonForStudent(req) {
@@ -751,7 +773,7 @@ function getLessonForStudent(req) {
     draft: d ? normalize(L, parseJson(d.answersJson, {})) : null,
     draftUpdatedAt: d ? d.updatedAt : '',
     checks: publicRec(L, main, false),
-    retry: retry.targets ? Object.assign(publicRec(L, retry, true), { targets: retry.targets, prefill: retryPrefill(L, retry.targets), finishedAt: retry.finishedAt || '' }) : null,
+    retry: retry.targets ? Object.assign(publicRec(L, retry, true), { targets: pubTargets(retry), kind: retry.kind || 'x', count: retry.count || 1, prefill: retryPrefill(L, retry.targets), finishedAt: retry.finishedAt || '' }) : null,
     total: allKeys(L).length,
     latest
   };
@@ -765,7 +787,7 @@ function upsertDraft(studentId, lessonId, answers) {
   return obj.updatedAt;
 }
 
-/** 下書きの答えに、◯✕ の記録（main）と解き直しの記録（retry）を付けて書く */
+/** 下書きの答えに、◯✕ の記録（main）と練習の記録（retry）を付けて書く */
 function draftWithRecs(studentId, L, a) {
   const main = getRec(studentId, L, 'main'), retry = getRec(studentId, L, 'retry');
   const o = Object.assign({}, a, { checks: main });
@@ -935,7 +957,7 @@ function unitKeys(L) {
   return u;
 }
 
-/** 全部の問題が決まったまとまり（解き直しでは、解き直しの問題だけで数える） */
+/** 全部の問題が決まったまとまり（練習では、練習の問題だけで数える） */
 function doneUnits(L, rec) {
   const u = unitKeys(L), out = [];
   Object.keys(u).forEach(k => {
@@ -945,7 +967,7 @@ function doneUnits(L, rec) {
   return out;
 }
 
-/** 解き直しで、問題でない所に入れておく正解（問題でない所は、宿題で正しく答えた所） */
+/** 練習で、問題でない所に入れておく正解（✕ の問題だけの練習のとき、問題でない所は宿題で正しく答えた所） */
 function retryPrefill(L, targets) {
   const pos = {}, chunks = {};
   L.sentences.forEach((s, si) => {
@@ -965,7 +987,7 @@ function judge(it, ok, answer) {
 }
 
 /**
- * 確かめる。kind：'mean'（1語）／'pos'（1文）／'chunk'（1文）。mode：'main'（宿題）／'retry'（解き直し）
+ * 確かめる。kind：'mean'（1語）／'pos'（1文）／'chunk'（1文）。mode：'main'（宿題）／'retry'（練習）
  * 返すもの：決まった問題（items）と、まだ決まっていない問題へのヒント（fb）
  */
 function checkItem(req) {
@@ -974,9 +996,9 @@ function checkItem(req) {
   const L = loadLesson(req.lessonId);
   const mode = req.mode === 'retry' ? 'retry' : 'main';
   const subs = submissionsOf(st.studentId, L.lessonId);
-  if (mode === 'main' && subs.length) throw userError('もう提出してあります。✕ の問題は「解き直し」で練習しよう。');
+  if (mode === 'main' && subs.length) throw userError('もう提出してあります。結果の画面の「もう一度取り組む（練習）」で練習しよう。');
   const rec = getRec(st.studentId, L, mode);
-  if (mode === 'retry' && !rec.targets) throw userError('解き直しが始まっていません。画面を開き直してください。');
+  if (mode === 'retry' && !rec.targets) throw userError('練習が始まっていません。画面を開き直してください。');
   const target = k => mode === 'main' || rec.targets.indexOf(k) >= 0;
   const a = normalize(L, req.answers);
   const items = {};
@@ -986,7 +1008,7 @@ function checkItem(req) {
     const w = L.words.find(x => x.w === req.w);
     if (!w) throw userError('この単語は意味調べにありません。');
     const k = 'm:' + w.w;
-    if (!target(k)) throw userError('この単語は解き直しの問題ではありません。');
+    if (!target(k)) throw userError('この単語は練習の問題ではありません。');
     unit = k;
     const it = rec.items[k] = rec.items[k] || {};
     if (!it.r) judge(it, meanOk(w, a.meanings[w.w]), a.meanings[w.w] || '');
@@ -1024,7 +1046,7 @@ function checkItem(req) {
   putRec(st.studentId, L, mode, rec);
   const out = { unit, items, done: doneUnits(L, rec).indexOf(unit) >= 0 };
   if (mode === 'main') out.progress = recScore(L, rec);
-  else out.finishedAt = rec.finishedAt || '';
+  else { out.finishedAt = rec.finishedAt || ''; out.targets = pubTargets(rec); }
   return out;
 }
 
@@ -1043,24 +1065,47 @@ function reflect(req) {
   return { key: req.key, f: req.f };
 }
 
-/** 解き直しを始める。宿題で ✕ だった問題だけ（試作の △ も入れる）。宿題の ◯✕ と正答率は変えない */
+/** 練習を始める。kind：'x'（宿題で ✕ だった問題だけ。試作の △ も入れる）／'all'（全部もう一度）。宿題の ◯✕ と正答率は変えない */
+/**
+ * 生徒に送る練習の問題の key。「全部もう一度」では、まだ確かめていないかたまりの key（区切りの答え）を送らず、
+ * 「c:文:?番号」に置きかえる（問題の数だけが分かる）。
+ */
+function pubTargets(rec) {
+  const t = rec.targets || [];
+  if (rec.kind !== 'all') return t;
+  const n = {};
+  return t.map(k => {
+    if (k[0] !== 'c' || (rec.items[k] && rec.items[k].r)) return k;
+    const si = k.split(':')[1];
+    n[si] = (n[si] || 0) + 1;
+    return `c:${si}:?${n[si]}`;
+  });
+}
+
 function startRetry(req) {
   const st = findStudent(req.who.id);
   assertAssigned(st, req.lessonId);
   const L = loadLesson(req.lessonId);
   const subs = submissionsOf(st.studentId, L.lessonId);
   const last = subs[subs.length - 1];
-  const raw = last ? parseJson(last.answersJson, {}) : {};
-  if (!raw.checks) throw userError('解き直しは、提出したあとにできます。');
-  const targets = allKeys(L).filter(k => { const it = raw.checks.items[k]; return it && (it.r === 't' || it.r === 'x'); });
-  if (!targets.length) throw userError('✕ の問題はありません。全部 ◯ です！');
-  const rec = Object.assign(emptyRec(), { targets, startedAt: stamp() });
+  if (!last) throw userError('練習は、提出したあとにできます。');
+  const raw = parseJson(last.answersJson, {});
+  const kind = req.kind === 'all' ? 'all' : 'x';
+  let targets;
+  if (kind === 'all') targets = allKeys(L);
+  else {
+    if (!raw.checks) throw userError('前の形で提出したレッスンなので、「全部もう一度」で練習しよう。');
+    targets = allKeys(L).filter(k => { const it = raw.checks.items[k]; return it && (it.r === 't' || it.r === 'x'); });
+    if (!targets.length) throw userError('✕ の問題はありません。全部 ◯ です！');
+  }
+  const prev = getRec(st.studentId, L, 'retry');
+  const rec = Object.assign(emptyRec(), { targets, kind, startedAt: stamp(), count: (prev.targets ? (prev.count || 1) : 0) + 1 });
   putRec(st.studentId, L, 'retry', rec);
   withLock(() => {
     const d = rows('Drafts').find(r => r.studentId.trim() === st.studentId && r.lessonId.trim() === L.lessonId);
     upsertDraft(st.studentId, L.lessonId, draftWithRecs(st.studentId, L, normalize(L, d ? parseJson(d.answersJson, {}) : {})));
   });
-  return { retry: Object.assign(publicRec(L, rec, true), { targets, prefill: retryPrefill(L, targets), finishedAt: '' }) };
+  return { retry: Object.assign(publicRec(L, rec, true), { targets: pubTargets(rec), kind, count: rec.count, prefill: retryPrefill(L, targets), finishedAt: '' }) };
 }
 
 /* ===== 操作：講師（講師パスワードの通行証が必要） ===== */
@@ -1087,7 +1132,7 @@ function lessonSummaries() {
 }
 
 function listLessons() {
-  return { lessons: lessonSummaries(), teachers: activeTeachers() };
+  return { lessons: lessonSummaries(), teachers: activeTeachers(), students: activeStudents() };
 }
 
 function listSubmissions(req) {
@@ -1109,7 +1154,7 @@ function listSubmissions(req) {
       total: allKeys(L).length
     });
   });
-  return { lesson: L, students, loadedAt: stamp() };
+  return { lesson: L, students, loadedAt: stamp(), today: Utilities.formatDate(new Date(), TZ, 'yyyy/MM/dd') };
 }
 
 function setCheck(req, on) {
@@ -1126,7 +1171,7 @@ function setCheck(req, on) {
 
 /**
  * 講師が、意味調べの ✕ を ◯ に直す。その生徒の正答率も直し、その答えをレッスンの正解の言葉（ok）に足す（次からは ◯ になる）。
- * 解き直しの記録と、ほかの生徒の記録は変えない。
+ * 練習の記録と、ほかの生徒の記録は変えない。
  */
 function overrideMeaning(req) {
   const id = String(req.submissionId || ''), key = String(req.key || '');
@@ -1173,7 +1218,7 @@ function adminData() {
     studentId: s.studentId.trim(), name: s.name, grade: s.grade.trim(), hasPin: /^\d{4}$/.test(normPin(s.pin))
   }));
   const assignments = rows('Assignments').filter(a => a.lessonId.trim() && a.studentId.trim()).map(a => ({
-    lessonId: a.lessonId.trim(), studentId: a.studentId.trim(), dueDate: a.dueDate
+    lessonId: a.lessonId.trim(), studentId: a.studentId.trim(), dueDate: a.dueDate, assignedBy: a.assignedBy || '教室長'
   }));
   return { lessons, students, assignments, illustrations: illustrationIndex(), loadedAt: stamp() };
 }
@@ -1258,34 +1303,71 @@ function assignTargets(req) {
   return { id, ids: ids.filter((x, i) => ids.indexOf(x) === i) };
 }
 
+/** 宿題を出した人の名前（講師は自分の名前、教室長は「教室長」） */
+function whoName(who) { return who.role === 'admin' ? '教室長' : who.id; }
+
 function assign(req) {
   const { id, ids } = assignTargets(req);
   const due = dueOf(req.dueDate);
+  const by = whoName(req.who);
   return withLock(() => {
+    ensureColumn('Assignments', 'assignedBy');
     const now = rows('Assignments').filter(a => a.lessonId.trim() === id);
     let added = 0, updated = 0;
     ids.forEach(sid => {
       const r = now.find(a => a.studentId.trim() === sid);
+      // もう出ている宿題は、期限だけ直す（出した人は最初の人のまま）
       if (r) { updateObj('Assignments', r, { dueDate: due }); updated++; }
-      else { appendObj('Assignments', { assignmentId: Utilities.getUuid(), lessonId: id, studentId: sid, dueDate: due, createdAt: stamp() }); added++; }
+      else { appendObj('Assignments', { assignmentId: Utilities.getUuid(), lessonId: id, studentId: sid, dueDate: due, createdAt: stamp(), assignedBy: by }); added++; }
     });
     forgetAssigned(ids);
-    return { added, updated };
+    return { added, updated, assignedBy: by };
   });
 }
 
-/** 配布を取り消す（Assignments の行を消す。下書きと提出は消さない） */
+/** 宿題を取り消す（Assignments の行を消す。下書きと提出は消さない）。講師は自分が出した宿題だけ */
 function unassign(req) {
   const { id, ids } = assignTargets(req);
+  const me = whoName(req.who);
   return withLock(() => {
     const s = sheet('Assignments');
-    const del = rows('Assignments').filter(a => a.lessonId.trim() === id && ids.indexOf(a.studentId.trim()) >= 0)
-      .map(a => a._row).sort((x, y) => y - x);
-    del.forEach(r => s.deleteRow(r));
+    const hit = rows('Assignments').filter(a => a.lessonId.trim() === id && ids.indexOf(a.studentId.trim()) >= 0);
+    const mine = hit.filter(a => req.who.role === 'admin' || (a.assignedBy || '教室長') === me);
+    mine.map(a => a._row).sort((x, y) => y - x).forEach(r => s.deleteRow(r));
     delete MEMO.Assignments;
     forgetAssigned(ids);
-    return { removed: del.length };
+    return { removed: mine.length, skipped: hit.length - mine.length };
   });
+}
+
+/**
+ * 教室長の「進み具合」。生徒 × レッスンの状態と、講師ごとの数。答えの中身は送らない。
+ * 状態：宿題（期限・出した人）／取り組み中（確かめた数）／提出（◯ の割合・チェック）／練習の回数
+ */
+function progressData() {
+  const lessons = lessonSummaries();
+  const totals = {};
+  lessons.forEach(l => { try { totals[l.lessonId] = allKeys(loadLesson(l.lessonId)).length; } catch (e) { totals[l.lessonId] = 0; } });
+  const cells = {};
+  const cell = (sid, lid) => (cells[sid + '|' + lid] = cells[sid + '|' + lid] || {});
+  rows('Assignments').forEach(a => {
+    if (!a.lessonId.trim() || !a.studentId.trim()) return;
+    Object.assign(cell(a.studentId.trim(), a.lessonId.trim()), { hw: { due: a.dueDate, by: a.assignedBy || '教室長', at: a.createdAt } });
+  });
+  rows('Drafts').forEach(d => {
+    const raw = parseJson(d.answersJson, {});
+    const c = cell(d.studentId.trim(), d.lessonId.trim());
+    const items = (raw.checks && raw.checks.items) || {};
+    c.done = Object.keys(items).filter(k => items[k].r).length;
+    c.started = true;
+    if (raw.retry && raw.retry.targets) c.practice = raw.retry.count || 1;
+  });
+  rows('Submissions').forEach(r => {
+    const c = cell(r.studentId.trim(), r.lessonId.trim());
+    if (c.sub && Number(c.sub.attempt) >= Number(r.attempt)) return;
+    c.sub = { rate: Number(r.rate), at: r.submittedAt, checkedBy: r.checkedBy, checkedAt: r.checkedAt, attempt: Number(r.attempt) };
+  });
+  return { lessons, totals, students: activeStudents(), teachers: activeTeachers(), cells, today: Utilities.formatDate(new Date(), TZ, 'yyyy/MM/dd'), loadedAt: stamp() };
 }
 
 /* ===== 挿絵（ドライブの非公開フォルダに置き、ログインした人にだけ返す） ===== */
