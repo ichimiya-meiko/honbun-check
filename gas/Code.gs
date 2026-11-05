@@ -1,5 +1,7 @@
 /**
  * 本文分析ノート（honbun-check） GAS バックエンド
+ * v10（意味調べの単語を、分析しないせりふ（あいさつ・見出しなど）からも選べる。words の line にせりふの番号を書く）
+ * v9（かたまりの役割に「不定詞」を足す。中2のレッスン用）
  * v8（生徒は自分の学年のレッスンを全部開ける。宿題は講師も出せる（出した講師を記録）。提出後の練習（✕ の問題だけ／全部もう一度）。教室長の進み具合）
  *
  * ・すべて doPost で JSON を受け取り、action で分ける。
@@ -10,7 +12,7 @@
  * ・パスワードは Settings にハッシュ（SHA-256）で置く。平文で書かれていたら、次に使うときにハッシュにして平文を消す。
  */
 
-const VERSION = 8;
+const VERSION = 10;
 const TZ = 'Asia/Tokyo';
 
 const SHEETS = {
@@ -24,7 +26,7 @@ const SHEETS = {
 };
 
 const POS_KEYS = ['名', '代', '動', '助', '冠', '疑', '動名', '不', '形', '副', '前', '接', '間', 'その他'];
-const ROLES = ['S', 'V', 'O', 'C', '修飾', 'その他'];
+const ROLES = ['S', 'V', 'O', 'C', '不定詞', '修飾', 'その他'];
 /* v2 までのレッスンで使っていた役割。新しいレッスンには使えないが、前のレッスンと提出は今までどおり採点する */
 const OLD_ROLES = ['つなぎ'];
 const ENDS = ['.', '!', '?'];
@@ -433,7 +435,7 @@ function publicLesson(L) {
       if (s.speaker) o.speaker = s.speaker;
       return o;
     }),
-    words: L.words.map(w => ({ w: w.w, sentence: w.sentence })),
+    words: L.words.map(w => (Number.isInteger(w.line) ? { w: w.w, line: w.line } : { w: w.w, sentence: w.sentence })),
     lines: Array.isArray(L.lines) ? L.lines.map(publicLine) : undefined
   };
 }
@@ -550,7 +552,10 @@ function lessonErrors(L) {
   (Array.isArray(L.words) ? L.words : []).forEach((w, i) => {
     const k = `意味調べの${i + 1}語目`;
     if (!w || !str(w.w)) { add(`${k}：w（単語）がありません。`); return; }
-    if (!Number.isInteger(w.sentence) || !L.sentences[w.sentence]) add(`${k}「${w.w}」：sentence は 0〜${L.sentences.length - 1} の番号にしてください。`);
+    if (w.line !== undefined) {
+      if (!Number.isInteger(w.line) || !Array.isArray(L.lines) || !L.lines[w.line]) add(`${k}「${w.w}」：line は、せりふの番号（0〜${Array.isArray(L.lines) ? L.lines.length - 1 : 0}）にしてください。`);
+      if (w.sentence !== undefined) add(`${k}「${w.w}」：sentence と line は、どちらか1つにしてください。`);
+    } else if (!Number.isInteger(w.sentence) || !L.sentences[w.sentence]) add(`${k}「${w.w}」：sentence は 0〜${L.sentences.length - 1} の番号にしてください（分析しないせりふの単語なら、sentence のかわりに line にせりふの番号を書きます）。`);
     if (!Array.isArray(w.ok) || !w.ok.length || w.ok.some(x => !str(x))) add(`${k}「${w.w}」：ok（正解にする言葉）を1つ以上入れてください。`);
   });
   return err;
@@ -562,8 +567,11 @@ function lineErrors(L, add) {
   if (!Array.isArray(L.lines) || !L.lines.length) { add('lines（せりふ）は [ ] の並びで、1つ以上入れてください。'); return; }
   // 新出単語は、大文字・小文字を区別せずに words と結びつける（文の始めの Call と、words の call など）
   const wordList = (Array.isArray(L.words) ? L.words : []).map(w => (w && typeof w.w === 'string' ? w.w.toLowerCase() : ''));
-  // 新出単語の文（words の sentence）。書きこむ欄（new）は、この文のせりふだけ
+  // 新出単語のせりふ（words の line、なければ sentence の文のせりふ）。書きこむ欄（new）は、このせりふだけ
   const wordSent = (Array.isArray(L.words) ? L.words : []).map(w => (w ? w.sentence : undefined));
+  const wordLine = (Array.isArray(L.words) ? L.words : []).map(w => (w && Number.isInteger(w.line) ? w.line : undefined));
+  const isWordLine = (wi, l, li) => (wordLine[wi] !== undefined ? li === wordLine[wi] : l.sentence === wordSent[wi]);
+  const wordAt = wi => (wordLine[wi] !== undefined ? `せりふ${wordLine[wi] + 1}` : `文${wordSent[wi] + 1}のせりふ`);
   const newSeen = {};
   let nextSentence = 0;
   L.lines.forEach((l, li) => {
@@ -590,8 +598,8 @@ function lineErrors(L, add) {
         const kind = g.new ? 'new' : 'hide';
         if (g.new && g.hide) add(`${at}の「${g.w}」：new と hide は、どちらか1つにしてください。`);
         if (wi < 0) add(`${at}の「${g.w}」：${kind} なのに words に入っていません。`);
-        else if (g.new && l.sentence !== wordSent[wi]) add(`${at}の「${g.w}」：new（書きこむ欄）にできるのは、words の sentence（文${wordSent[wi] + 1}）のせりふだけです。ほかのせりふで同じ意味なら hide にしてください。`);
-        else if (g.hide && l.sentence === wordSent[wi]) add(`${at}の「${g.w}」：words の sentence のせりふなので、hide ではなく new にしてください。`);
+        else if (g.new && !isWordLine(wi, l, li)) add(`${at}の「${g.w}」：new（書きこむ欄）にできるのは、words で決めた${wordAt(wi)}だけです。ほかのせりふで同じ意味なら hide にしてください。`);
+        else if (g.hide && isWordLine(wi, l, li)) add(`${at}の「${g.w}」：words で決めたせりふなので、hide ではなく new にしてください。`);
         if (g.ja !== undefined) add(`${at}の「${g.w}」：新出単語には ja を書かないでください（答えになるため）。`);
         if (marks.indexOf(g.w) < 0) add(`${at}の「${g.w}」：ja の中に {${g.w}:訳} の印がありません（訳の答えを隠すため）。`);
         if (g.otherMeaning) add(`${at}の「${g.w}」：${kind} と otherMeaning は、いっしょに付けられません。`);
@@ -605,7 +613,7 @@ function lineErrors(L, add) {
     marks.forEach(k => { if (!l.gloss.some(g => g && (g.new || g.hide) && g.w === k)) add(`${at}：ja の {${k}:…} にあたる新出単語（new か hide）が gloss にありません。`); });
   });
   if (nextSentence !== L.sentences.length) add(`lines の中に、分析する文（sentences）が ${L.sentences.length} 個そろっていません（今 ${nextSentence} 個）。`);
-  wordList.forEach(w => { if (w && !newSeen[w]) add(`意味調べの「${w}」：words の sentence のせりふの gloss に new として入っていません。`); });
+  wordList.forEach(w => { if (w && !newSeen[w]) add(`意味調べの「${w}」：words で決めたせりふ（sentence か line）の gloss に new として入っていません。`); });
 }
 
 /* ===== 採点 ===== */

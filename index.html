@@ -100,7 +100,7 @@ select,input[type=text],input[type=password],textarea{background:var(--paper);bo
 .role.set,.role.static{border-style:solid;color:#fff;border-color:transparent}
 /* 見直しの表示のラベル（span）も、ボタンと同じく文字を真ん中にする */
 .role.static{display:inline-flex;align-items:center;justify-content:center;white-space:nowrap}
-.role[data-r="S"]{background:var(--r-S)}.role[data-r="V"]{background:var(--r-V)}.role[data-r="O"]{background:var(--r-O)}.role[data-r="C"]{background:var(--r-C)}.role[data-r="修飾"]{background:var(--r-M)}.role[data-r="つなぎ"]{background:var(--p-conj)}.role[data-r="その他"]{background:var(--r-etc)}
+.role[data-r="S"]{background:var(--r-S)}.role[data-r="V"]{background:var(--r-V)}.role[data-r="O"]{background:var(--r-O)}.role[data-r="C"]{background:var(--r-C)}.role[data-r="不定詞"]{background:var(--p-inf)}.role[data-r="修飾"]{background:var(--r-M)}.role[data-r="つなぎ"]{background:var(--p-conj)}.role[data-r="その他"]{background:var(--r-etc)}
 .role.static[data-r=""]{background:var(--soft);color:var(--sub);border:1.5px dashed var(--sub)}
 .dot{color:var(--ink);font-size:1.35rem;align-self:flex-start;padding-top:6px;font-family:"Literata",serif}
 
@@ -391,16 +391,16 @@ button[disabled]{opacity:.5;cursor:default}
 </head>
 <body>
 <header><div class="hin">
-  <div class="brand">本文分析ノート<small>v8</small></div>
+  <div class="brand">本文分析ノート<small>v10</small></div>
   <div class="hright" id="hright"></div>
 </div></header>
 <main id="main"></main>
 
 <script>
 /* ===== 設定 ===== */
-const VERSION=8;
+const VERSION=10;
 /* この画面が使う GAS の版 */
-const SERVER_VERSION=8;
+const SERVER_VERSION=10;
 /* ↓ GAS を「ウェブアプリ」として公開したときの URL を ' ' の間に貼る（docs/setup.md 手順7） */
 const API_URL='https://script.google.com/macros/s/AKfycbxUiT8hdHzK3Ol4ZKZJT1hFNnyWGQolkUCGVA3amXMKUl_dXqweX0BrD6XMpVfs9Q_j/exec';
 
@@ -411,8 +411,8 @@ const POS=[
  {k:'副',name:'副詞',v:'--p-adv'},{k:'前',name:'前置詞',v:'--p-prep'},{k:'接',name:'接続詞',v:'--p-conj'},
  {k:'間',name:'間投詞',v:'--p-intj'},{k:'その他',name:'その他',v:'--p-etc'}
 ];
-const ROLE_CYCLE=['','S','V','O','C','修飾','その他'];
-const ROLE_LEGEND={'S':['--r-S','主語「〜は」'],'V':['--r-V','動詞「〜する」'],'O':['--r-O','目的語「〜を」'],'C':['--r-C','Sの説明'],'修飾':['--r-M','くわしくする部分'],'その他':['--r-etc','それ以外の部分'],'つなぎ':['--p-conj','but など']};
+const ROLE_CYCLE=['','S','V','O','C','不定詞','修飾','その他'];
+const ROLE_LEGEND={'S':['--r-S','主語「〜は」'],'V':['--r-V','動詞「〜する」'],'O':['--r-O','目的語「〜を」'],'C':['--r-C','Sの説明'],'不定詞':['--p-inf','to＋動詞のまとまり'],'修飾':['--r-M','くわしくする部分'],'その他':['--r-etc','それ以外の部分'],'つなぎ':['--p-conj','but など']};
 /* そのレッスンで使う品詞・役割（posSet / roleSet）。v2 までのレッスンには無いので、そのときは全部 */
 const posSetOf=L=>Array.isArray(L?.posSet)&&L.posSet.length?POS.filter(p=>L.posSet.includes(p.k)):POS;
 const roleSetOf=L=>Array.isArray(L?.roleSet)&&L.roleSet.length?L.roleSet:ROLE_CYCLE.slice(1);
@@ -433,8 +433,8 @@ const POS_WHY={
  '不':{why:'「to＋動詞の原形」の形。「〜すること」「〜するために」などの意味になる。前置詞の to とちがい、すぐ後ろに動詞が来る。',ask:'「to のすぐ後ろは名詞？動詞？」と聞く'},
  'その他':{why:'このレッスンで使う品詞のどれにもあてはまらない語。',ask:'「ボタンにある品詞のどれかにあてはまる？」と聞く'}
 };
-const ROLE_WHY={'S':'「〜は・〜が」にあたる主語。','V':'動作や状態を表す動詞。','O':'動詞のあとで「〜を・〜に」にあたる目的語。','C':'Sの様子や正体を説明する補語。S＝C が成り立つ。','修飾':'時・場所・様子などをくわしくする部分。なくても文は成り立つ。','つなぎ':'文と文、語と語をつなぐ部分（and, but など）。','その他':'このレッスンで使う役割（S・V など）のどれにもあてはまらない部分。'};
-const ROLE_ASK={'S':'「この文は誰（何）の話？」と聞く','V':'「動作や状態を表す語はどれ？」と聞く','O':'「動詞のあとに『何を？』と聞くと、答えはどこ？」と聞く','C':'「S＝この部分、と言える？」と聞く','修飾':'「このかたまりがなくても文は成り立つ？」と聞く','つなぎ':'「この語は前の文とどうつながっている？」と聞く','その他':'「この部分は S？V？それともどちらでもない？」と聞く'};
+const ROLE_WHY={'S':'「〜は・〜が」にあたる主語。','V':'動作や状態を表す動詞。','O':'動詞のあとで「〜を・〜に」にあたる目的語。','C':'Sの様子や正体を説明する補語。S＝C が成り立つ。','不定詞':'to＋動詞の原形から、その後ろの「〜を」にあたる言葉までのまとまり（前置詞の前で区切る）。「〜すること」「〜するための」「〜するために」などの意味になる。','修飾':'時・場所・様子などをくわしくする部分。なくても文は成り立つ。','つなぎ':'文と文、語と語をつなぐ部分（and, but など）。','その他':'このレッスンで使う役割（S・V など）のどれにもあてはまらない部分。'};
+const ROLE_ASK={'S':'「この文は誰（何）の話？」と聞く','V':'「動作や状態を表す語はどれ？」と聞く','O':'「動詞のあとに『何を？』と聞くと、答えはどこ？」と聞く','C':'「S＝この部分、と言える？」と聞く','不定詞':'「to のあとの動詞はどれ？その動詞の後ろの言葉はどこまでつながっている？」と聞く','修飾':'「このかたまりがなくても文は成り立つ？」と聞く','つなぎ':'「この語は前の文とどうつながっている？」と聞く','その他':'「この部分は S？V？それともどちらでもない？」と聞く'};
 
 /* ===== 小さな道具 ===== */
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -1097,8 +1097,10 @@ function step1Retry(a){
  if(!ws.length)return `<div class="card"><p>意味調べの練習はありません。</p></div>`+nextBtn(2,'次へ：かたまり');
  let h=`<p class="guide">もう一度、この文の中での意味を考えよう。</p>`;
  ws.forEach((w,i)=>{
-  const s=L.sentences[w.sentence];
-  const ctx=s?spkIn(s)+s.tokens.map((t,ti)=>(ti&&!t.glue?' ':'')+(t.w.toLowerCase()===w.w.toLowerCase()?`<b>${esc(t.w)}</b>`:esc(t.w))+pn(t)).join('')+esc(s.end):'';
+  const s=L.sentences[w.sentence],ln=Number.isInteger(w.line)&&L.lines?L.lines[w.line]:null;
+  /* v10：分析しないせりふの単語は、そのせりふを出す */
+  const ctx=ln?spkIn(ln)+(ln.gloss||[]).reduce((o,g)=>{const p=ln.text.indexOf(g.w,o.pos);if(p<0)return o;o.h+=esc(ln.text.slice(o.pos,p))+(g.w.toLowerCase()===w.w.toLowerCase()?`<b>${esc(g.w)}</b>`:esc(g.w));o.pos=p+g.w.length;return o},{h:'',pos:0}).h+esc(ln.text.slice(((ln.gloss||[]).reduce((q,g)=>{const p=ln.text.indexOf(g.w,q);return p<0?q:p+g.w.length},0))))
+   :s?spkIn(s)+s.tokens.map((t,ti)=>(ti&&!t.glue?' ':'')+(t.w.toLowerCase()===w.w.toLowerCase()?`<b>${esc(t.w)}</b>`:esc(t.w))+pn(t)).join('')+esc(s.end):'';
   h+=`<div class="card"><p class="ctx">${ctx}</p>${meanBox(w.w,a,'rm-'+i)}</div>`;
  });
  return h+nextBtn(2,'次へ：かたまり');
@@ -1177,11 +1179,20 @@ function sentCheck(kind,si,a){
  if(st==='todo')h+=`<div class="ckbar">${ckBtn(kind==='pos'?'pos':'chunk',si,'この文を確かめる')}</div>`;
  return h;
 }
-/* 中1の「区切り方のポイント」 */
+/* 「区切り方のポイント」。中1は3つ。中2からは、roleSet にある役割（C・O・不定詞）の説明も出す */
 const CHUNK_TIPS_1=['まず V（動詞）をさがす。','V の前は S になることが多い。','残りは、接続詞（and、but など）と前置詞（in、at、to など）の前で区切る。'];
+const CHUNK_TIPS_2={
+ V:'まず V（動詞）をさがす。助動詞＋動詞（can play、will go）、be going to・have to＋動詞、want to＋動詞（〜したい）は、まとめて1つの V。',
+ S:'V の前は S になることが多い。',
+ C:'C：be動詞や look・sound などのあとで、S の様子や正体を説明する部分。「S＝C」と言えるか考えよう。',
+ O:'O：動詞のあとで「〜を・〜に」にあたる部分。S＝O とは言えない。',
+ 不定詞:'不定詞：to＋動詞の原形 から、その後ろの「〜を」にあたる言葉までを1つのかたまりにする。前置詞（in、at、to など）の前では区切る。（want to＋動詞のように、V にまとめるものはのぞく）',
+ rest:'残りは、接続詞（and、but、when、if など）と前置詞（in、at、to など）の前で区切る。'
+};
 function chunkTips(L){
- if(L.grade!=='中1')return '';
- return `<div class="tips"><b>区切り方のポイント</b><ul>${CHUNK_TIPS_1.map(t=>`<li>${esc(t)}</li>`).join('')}</ul></div>`;
+ const rs=roleSetOf(L);
+ const list=L.grade==='中1'?CHUNK_TIPS_1:['V','S','C','O','不定詞'].filter(k=>k==='V'||k==='S'||rs.includes(k)).map(k=>CHUNK_TIPS_2[k]).concat(CHUNK_TIPS_2.rest);
+ return `<div class="tips"><b>区切り方のポイント</b><ul>${list.map(t=>`<li>${esc(t)}</li>`).join('')}</ul></div>`;
 }
 function step2(a){
  if(S.mode==='retry'){const l=retrySents('c');if(!l.length)return `<div class="card"><p>かたまりの練習はありません。</p></div>`+nextBtn(3,'次へ：品詞');if(!l.includes(S.si))S.si=l[0]}
@@ -1225,10 +1236,20 @@ const POS_EX={
  '間':'気持ちや呼びかけを表す言葉（oh、wow）',
  'その他':'上のどれにも当てはまらない言葉'
 };
+/* 中2からは、形容詞・副詞・前置詞・接続詞なども使うので、例をくわしくする */
+const POS_EX_2={
+ '助':'動詞の前に置いて意味を足す言葉（can、will、must、may、do、does）。going to・have to も1つの単語で助動詞',
+ '不':'to＋動詞の原形を1つの単語にする（to play、to see）',
+ '形':'名詞をくわしくしたり（a big dog）、be動詞のあとで様子を表したり（I am happy.）する言葉（good、new、happy）。比べる形（bigger、biggest）も形容詞',
+ '副':'動詞・形容詞・文をくわしくする言葉（very、well、here、now、too）',
+ '前':'名詞の前に置いて、場所・時・相手などを表す言葉（in、at、on、to、for、with）。前置詞から名詞までが1つのかたまり（at school）',
+ '接':'語と語、文と文をつなぐ言葉（and、but、or、so、when、if、because、that）'
+};
+const posExOf=(L,k)=>(L&&L.grade!=='中1'&&POS_EX_2[k])||POS_EX[k]||'';
 function posExamples(L){
- const list=posSetOf(L).filter(p=>POS_EX[p.k]);
+ const list=posSetOf(L).filter(p=>posExOf(L,p.k));
  if(!list.length)return '';
- return `<details class="posex" data-keep="posex" ${S.posEx?'open':''}><summary>品詞の例</summary><dl>${list.map(p=>`<div><dt style="--c:var(${p.v})"><i></i>${esc(p.name)}</dt><dd>${esc(POS_EX[p.k])}</dd></div>`).join('')}</dl></details>`;
+ return `<details class="posex" data-keep="posex" ${S.posEx?'open':''}><summary>品詞の例</summary><dl>${list.map(p=>`<div><dt style="--c:var(${p.v})"><i></i>${esc(p.name)}</dt><dd>${esc(posExOf(L,p.k))}</dd></div>`).join('')}</dl></details>`;
 }
 function step3(a){
  if(S.mode==='retry'){const l=retrySents('p');if(!l.length)return `<div class="card"><p>品詞の練習はありません。</p></div>`+nextBtn(4,'次へ：おわり');if(!l.includes(S.si))S.si=l[0]}
@@ -1248,7 +1269,7 @@ function step3(a){
 function toolHint(k){
  if(k==='?')return '<b>？ わからない</b>：わからない単語に付けておこう。授業で先生と一緒に考えます。';
  if(k==='x')return '<b>消す</b>：タップした単語の品詞を消します。';
- return `<b>${esc(posName(k))}</b>：${esc(POS_EX[k]||'')}`;
+ return `<b>${esc(posName(k))}</b>：${esc(posExOf(S.L,k))}`;
 }
 function step4(a){
  const R=S.chk,L=S.L;
@@ -1616,8 +1637,11 @@ function lineErrors(L, add) {
  if (!Array.isArray(L.lines) || !L.lines.length) { add('lines（せりふ）は [ ] の並びで、1つ以上入れてください。'); return; }
  // 新出単語は、大文字・小文字を区別せずに words と結びつける（文の始めの Call と、words の call など）
  const wordList = (Array.isArray(L.words) ? L.words : []).map(w => (w && typeof w.w === 'string' ? w.w.toLowerCase() : ''));
- // 新出単語の文（words の sentence）。書きこむ欄（new）は、この文のせりふだけ
+ // 新出単語のせりふ（words の line、なければ sentence の文のせりふ）。書きこむ欄（new）は、このせりふだけ
  const wordSent = (Array.isArray(L.words) ? L.words : []).map(w => (w ? w.sentence : undefined));
+ const wordLine = (Array.isArray(L.words) ? L.words : []).map(w => (w && Number.isInteger(w.line) ? w.line : undefined));
+ const isWordLine = (wi, l, li) => (wordLine[wi] !== undefined ? li === wordLine[wi] : l.sentence === wordSent[wi]);
+ const wordAt = wi => (wordLine[wi] !== undefined ? `せりふ${wordLine[wi] + 1}` : `文${wordSent[wi] + 1}のせりふ`);
  const newSeen = {};
  let nextSentence = 0;
  L.lines.forEach((l, li) => {
@@ -1644,8 +1668,8 @@ function lineErrors(L, add) {
     const kind = g.new ? 'new' : 'hide';
     if (g.new && g.hide) add(`${at}の「${g.w}」：new と hide は、どちらか1つにしてください。`);
     if (wi < 0) add(`${at}の「${g.w}」：${kind} なのに words に入っていません。`);
-    else if (g.new && l.sentence !== wordSent[wi]) add(`${at}の「${g.w}」：new（書きこむ欄）にできるのは、words の sentence（文${wordSent[wi] + 1}）のせりふだけです。ほかのせりふで同じ意味なら hide にしてください。`);
-    else if (g.hide && l.sentence === wordSent[wi]) add(`${at}の「${g.w}」：words の sentence のせりふなので、hide ではなく new にしてください。`);
+    else if (g.new && !isWordLine(wi, l, li)) add(`${at}の「${g.w}」：new（書きこむ欄）にできるのは、words で決めた${wordAt(wi)}だけです。ほかのせりふで同じ意味なら hide にしてください。`);
+    else if (g.hide && isWordLine(wi, l, li)) add(`${at}の「${g.w}」：words で決めたせりふなので、hide ではなく new にしてください。`);
     if (g.ja !== undefined) add(`${at}の「${g.w}」：新出単語には ja を書かないでください（答えになるため）。`);
     if (marks.indexOf(g.w) < 0) add(`${at}の「${g.w}」：ja の中に {${g.w}:訳} の印がありません（訳の答えを隠すため）。`);
     if (g.otherMeaning) add(`${at}の「${g.w}」：${kind} と otherMeaning は、いっしょに付けられません。`);
@@ -1659,7 +1683,7 @@ function lineErrors(L, add) {
   marks.forEach(k => { if (!l.gloss.some(g => g && (g.new || g.hide) && g.w === k)) add(`${at}：ja の {${k}:…} にあたる新出単語（new か hide）が gloss にありません。`); });
  });
  if (nextSentence !== L.sentences.length) add(`lines の中に、分析する文（sentences）が ${L.sentences.length} 個そろっていません（今 ${nextSentence} 個）。`);
- wordList.forEach(w => { if (w && !newSeen[w]) add(`意味調べの「${w}」：words の sentence のせりふの gloss に new として入っていません。`); });
+ wordList.forEach(w => { if (w && !newSeen[w]) add(`意味調べの「${w}」：words で決めたせりふ（sentence か line）の gloss に new として入っていません。`); });
 }
 function lessonErrors(L){
  const err=[],add=m=>{if(err.length<30)err.push(m)};
@@ -1705,7 +1729,10 @@ function lessonErrors(L){
  (Array.isArray(L.words)?L.words:[]).forEach((w,i)=>{
   const k=`意味調べの${i+1}語目`;
   if(!w||!str(w.w)){add(`${k}：w（単語）がありません。`);return}
-  if(!Number.isInteger(w.sentence)||!L.sentences[w.sentence])add(`${k}「${w.w}」：sentence は 0〜${L.sentences.length-1} の番号にしてください。`);
+  if(w.line!==undefined){
+   if(!Number.isInteger(w.line)||!Array.isArray(L.lines)||!L.lines[w.line])add(`${k}「${w.w}」：line は、せりふの番号（0〜${Array.isArray(L.lines)?L.lines.length-1:0}）にしてください。`);
+   if(w.sentence!==undefined)add(`${k}「${w.w}」：sentence と line は、どちらか1つにしてください。`);
+  }else if(!Number.isInteger(w.sentence)||!L.sentences[w.sentence])add(`${k}「${w.w}」：sentence は 0〜${L.sentences.length-1} の番号にしてください（分析しないせりふの単語なら、sentence のかわりに line にせりふの番号を書きます）。`);
   if(!Array.isArray(w.ok)||!w.ok.length||w.ok.some(x=>!str(x)))add(`${k}「${w.w}」：ok（正解にする言葉）を1つ以上入れてください。`);
  });
  return err;

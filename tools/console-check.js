@@ -1,5 +1,5 @@
 /*
- * 本文分析ノート 動作確認スクリプト（v8 用）
+ * 本文分析ノート 動作確認スクリプト（v10 用）
  *
  * 使い方
  *   1. Chrome で index.html を開き、ログインする（生徒・講師・教室長のどれでもよい）。
@@ -21,6 +21,8 @@
  *   ・（生徒）v8：宿題の一覧に、学年のレッスンが全部出るか。練習の問題に、まだ確かめていないかたまりの答えが入っていないか
  *   ・（講師）v8：講師も宿題を出せるか（出す操作の権限）。講師は「進み具合」を見られないか
  *   ・（教室長）v8：進み具合のデータが読めるか
+ *   ・（生徒）v9：レッスンのかたまりの役割（roleSet）が、画面にあるボタン（S・V・O・C・不定詞・修飾・その他）だけか
+ *   ・（生徒）v10：意味調べの単語が、分析する文（sentence）か、せりふ（line）のどちらか1つに結びついているか
  *   ・挿絵がもらえるか、配られていない人にはもらえないか（挿絵を受けとる時間も測ります）
  *   ・（生徒）まだ確かめていない問題の答えが届いていないか。ログインしていない人や講師は「確かめる」を使えないか
  *   ・英語の読み上げの声が、このタブレットにあるか（声の名前を出します。音は出しません）
@@ -111,7 +113,16 @@
         // v8：練習（とくに「全部もう一度」）で、まだ確かめていないかたまりの場所が入っていないこと
         const rt = j.retry;
         if (rt && rt.kind === 'all' && (rt.targets || []).some(k => /^c:\d+:\d+-\d+$/.test(k) && !rt.items?.[k]?.r)) throw new Error('練習の問題に、かたまりの答えが入っている');
-        return `${j.lesson.sentences.length}文・せりふ ${lines.length}${rt ? `・練習 ${rt.count || 1}回目（${rt.kind === 'all' ? '全部' : '✕だけ'}）` : ''}・確かめた問題 ${items.filter(([, it]) => it.r).length}/${j.total}・答えは入っていない・出典あり`;
+        // v9：かたまりの役割は、画面にあるボタンだけ（中2の「不定詞」も）
+        const known = ['S', 'V', 'O', 'C', '不定詞', '修飾', 'その他', 'つなぎ'];
+        const rs = j.lesson.roleSet || [];
+        if (rs.some(r => !known.includes(r))) throw new Error('画面にない役割がある：' + rs.filter(r => !known.includes(r)).join('・') + '（index.html が v9 になっていない？）');
+        // v10：意味調べの単語は、分析する文（sentence）か、せりふ（line）のどちらか1つに結びつく
+        const ws = j.lesson.words || [];
+        const badW = ws.filter(w => Number.isInteger(w.line) ? !lines[w.line] || w.sentence !== undefined : !j.lesson.sentences[w.sentence]);
+        if (badW.length) throw new Error('意味調べの単語の結びつきがおかしい：' + badW.map(w => w.w).join('・') + '（GAS が v10 になっていない？）');
+        const byLine = ws.filter(w => Number.isInteger(w.line)).length;
+        return `${j.lesson.sentences.length}文・せりふ ${lines.length}・意味調べ ${ws.length}語（せりふから ${byLine}語）・役割 ${rs.join('・')}${rt ? `・練習 ${rt.count || 1}回目（${rt.kind === 'all' ? '全部' : '✕だけ'}）` : ''}・確かめた問題 ${items.filter(([, it]) => it.r).length}/${j.total}・答えは入っていない・出典あり`;
       });
       await step('生徒は、意味調べの ✕ を ◯ にできない', () => expectFail(HC.api('overrideMeaning', { submissionId: 'x', key: 'm:x' }), ['auth']));
       await step('画面の採点：書き方のちがいを同じとみなす', async () => {
